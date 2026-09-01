@@ -511,61 +511,71 @@ function App(){
   }
 
   const startRec=useCallback((onResult)=>{
-    // 从后端获取鉴权 URL（保护 APISecret 不暴露前端）
-    fetch("/api/xfyun-auth")
-      .then(r=>r.json())
-      .then(({url,appid,error:e})=>{
-        if(!url){setError("讯飞鉴权失败："+( e||"请检查 APPID/APIKey/APISecret"));return;}
+    // 先请求麦克风权限，拿到 stream 后再连 WebSocket
+    navigator.mediaDevices.getUserMedia({audio:true})
+      .then(stream=>{
+        fetch("/api/xfyun-auth")
+          .then(r=>r.json())
+          .then(({url,appid,error:e})=>{
+            if(!url){
+              stream.getTracks().forEach(t=>t.stop());
+              setError("讯飞鉴权失败："+(e||"请检查 APPID/APIKey/APISecret"));
+              return;
+            }
 
-        const ws=new WebSocket(url);
-        const audioCtx={ctx:null,processor:null,stream:null};
-        let accumulated="";
+            const ws=new WebSocket(url);
+            const audioCtx={ctx:null,processor:null,stream};
+            let accumulated="";
 
-        ws.onopen=async()=>{
-          // 发送第一帧（业务参数），appid 从服务端传回
-          ws.send(JSON.stringify({
-            common:{app_id:appid},
-            business:{language:"zh_cn",domain:"iat",accent:"mandarin",vad_eos:2000,dwa:"wpgs"},
-            data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
-          }));
-          // 请求麦克风
-          try{
-            const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-            audioCtx.stream=stream;
-            const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
-            audioCtx.ctx=ctx;
-            const src=ctx.createMediaStreamSource(stream);
-            const proc=ctx.createScriptProcessor(1280,1,1);
-            audioCtx.processor=proc;
-            proc.onaudioprocess=ev=>{
-              if(ws.readyState!==WebSocket.OPEN)return;
-              const inp=ev.inputBuffer.getChannelData(0);
-              const pcm=new Int16Array(inp.length);
-              for(let i=0;i<inp.length;i++)pcm[i]=Math.max(-32768,Math.min(32767,inp[i]*32768));
-              const b64=btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-              ws.send(JSON.stringify({data:{status:1,format:"audio/L16;rate=16000",encoding:"raw",audio:b64}}));
+            ws.onopen=()=>{
+              ws.send(JSON.stringify({
+                common:{app_id:appid},
+                business:{language:"zh_cn",domain:"iat",accent:"mandarin",
+                  vad_eos:2000,dwa:"wpgs"},
+                data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
+              }));
+
+              try{
+                const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+                audioCtx.ctx=ctx;
+                const src=ctx.createMediaStreamSource(stream);
+                const proc=ctx.createScriptProcessor(1280,1,1);
+                audioCtx.processor=proc;
+                proc.onaudioprocess=ev=>{
+                  if(ws.readyState!==WebSocket.OPEN)return;
+                  const inp=ev.inputBuffer.getChannelData(0);
+                  const pcm=new Int16Array(inp.length);
+                  for(let i=0;i<inp.length;i++)pcm[i]=Math.max(-32768,Math.min(32767,inp[i]*32768));
+                  const b64=btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+                  ws.send(JSON.stringify({data:{status:1,format:"audio/L16;rate=16000",
+                    encoding:"raw",audio:b64}}));
+                };
+                src.connect(proc);proc.connect(ctx.destination);
+                setIsRec(true);
+              }catch(err){
+                setError("音频处理失败："+err.message);
+                ws.close();
+              }
             };
-            src.connect(proc);proc.connect(ctx.destination);
-            setIsRec(true);
-          }catch(err){
-            setError("麦克风权限被拒绝，请在浏览器地址栏点击锁图标允许麦克风");
-            ws.close();
-          }
-        };
 
-        ws.onmessage=ev=>{
-          const d=JSON.parse(ev.data);
-          if(d.code!==0){setError("讯飞识别错误 "+d.code+"："+d.message);return;}
-          const words=(d.data?.result?.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
-          if(words){accumulated+=words;onResult(accumulated);}
-          if(d.data?.status===2){cleanupAudio(audioCtx);ws.close();}
-        };
+            ws.onmessage=ev=>{
+              const d=JSON.parse(ev.data);
+              if(d.code!==0){setError("讯飞识别错误 "+d.code+"："+d.message);return;}
+              const words=(d.data?.result?.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
+              if(words){accumulated+=words;onResult(accumulated);}
+              if(d.data?.status===2){cleanupAudio(audioCtx);ws.close();}
+            };
 
-        ws.onerror=()=>setError("讯飞 WebSocket 连接失败，请检查网络");
-        ws.onclose=()=>{cleanupAudio(audioCtx);setIsRec(false);};
-        recRef.current={ws,audio:audioCtx};
+            ws.onerror=()=>setError("讯飞 WebSocket 连接失败，请检查网络");
+            ws.onclose=()=>{cleanupAudio(audioCtx);setIsRec(false);};
+            recRef.current={ws,audio:audioCtx};
+          })
+          .catch(err=>{
+            stream.getTracks().forEach(t=>t.stop());
+            setError("讯飞鉴权请求失败："+err.message);
+          });
       })
-      .catch(err=>setError("讯飞鉴权请求失败："+err.message));
+      .catch(()=>setError("麦克风权限被拒绝，请在浏览器地址栏点击锁图标允许麦克风"));
   },[]);
 
   const stopRec=useCallback(()=>{
