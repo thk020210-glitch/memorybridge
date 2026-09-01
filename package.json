@@ -1,0 +1,6 @@
+{
+  "name": "memorybridge",
+  "version": "1.0.0",
+  "description": "MemoryBridge · AI-guided photo restoration",
+  "engines": { "node": ">=18" }
+}
