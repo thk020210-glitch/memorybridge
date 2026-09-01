@@ -488,9 +488,9 @@ function App(){
   const[globalCompare,setGlobalCompare]=useState(false);
   const[error,setError]=useState(null);
   const[isRec,setIsRec]=useState(false);
-  const[classResult,setClassResult]=useState(null);// Hunyuan response
+  const[classResult,setClassResult]=useState(null);
 
-  const recRef=useRef(null);// SpeechRecognition instance
+  const recRef=useRef(null);   // {ws, audio} iFlytek WebSocket
   const fileRef=useRef();
   const camRef=useRef();
 
@@ -504,29 +504,79 @@ function App(){
   // ── Camera helper ─────────────────────────────────────────────────────────
   const moveCam=useCallback((c)=>setCam(c||WIDE_CAM),[]);
 
-  // ── Speech recognition ────────────────────────────────────────────────────
+  // ── iFlytek WebSocket 实时语音识别 ────────────────────────────────────────
+  function cleanupAudio(a){
+    if(!a)return;
+    try{a.processor?.disconnect();a.ctx?.close();a.stream?.getTracks().forEach(t=>t.stop());}catch(_){}
+  }
+
   const startRec=useCallback((onResult)=>{
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){setError("该浏览器不支持语音识别，请使用 Chrome");return;}
-    const r=new SR();
-    r.lang="zh-CN";r.continuous=true;r.interimResults=true;
-    r.onresult=e=>{
-      let t="";
-      for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;
-      onResult(t);
-    };
-    r.onerror=e=>{
-      if(e.error!=="no-speech")setError("语音识别出错："+e.error);
-    };
-    r.start();
-    recRef.current=r;
-    setIsRec(true);
+    // 从后端获取鉴权 URL（保护 APISecret 不暴露前端）
+    fetch("/api/xfyun-auth")
+      .then(r=>r.json())
+      .then(({url,error:e})=>{
+        if(!url){setError("讯飞鉴权失败："+( e||"请检查 APPID/APIKey/APISecret"));return;}
+
+        const ws=new WebSocket(url);
+        const audioCtx={ctx:null,processor:null,stream:null};
+        let accumulated="";
+
+        ws.onopen=async()=>{
+          // 发送第一帧（业务参数）
+          ws.send(JSON.stringify({
+            common:{app_id:""},
+            business:{language:"zh_cn",domain:"iat",accent:"mandarin",vad_eos:2000,dwa:"wpgs"},
+            data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
+          }));
+          // 请求麦克风
+          try{
+            const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+            audioCtx.stream=stream;
+            const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+            audioCtx.ctx=ctx;
+            const src=ctx.createMediaStreamSource(stream);
+            const proc=ctx.createScriptProcessor(1280,1,1);
+            audioCtx.processor=proc;
+            proc.onaudioprocess=ev=>{
+              if(ws.readyState!==WebSocket.OPEN)return;
+              const inp=ev.inputBuffer.getChannelData(0);
+              const pcm=new Int16Array(inp.length);
+              for(let i=0;i<inp.length;i++)pcm[i]=Math.max(-32768,Math.min(32767,inp[i]*32768));
+              const b64=btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+              ws.send(JSON.stringify({data:{status:1,format:"audio/L16;rate=16000",encoding:"raw",audio:b64}}));
+            };
+            src.connect(proc);proc.connect(ctx.destination);
+            setIsRec(true);
+          }catch(err){
+            setError("麦克风权限被拒绝，请在浏览器地址栏点击锁图标允许麦克风");
+            ws.close();
+          }
+        };
+
+        ws.onmessage=ev=>{
+          const d=JSON.parse(ev.data);
+          if(d.code!==0){setError("讯飞识别错误 "+d.code+"："+d.message);return;}
+          const words=(d.data?.result?.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
+          if(words){accumulated+=words;onResult(accumulated);}
+          if(d.data?.status===2){cleanupAudio(audioCtx);ws.close();}
+        };
+
+        ws.onerror=()=>setError("讯飞 WebSocket 连接失败，请检查网络");
+        ws.onclose=()=>{cleanupAudio(audioCtx);setIsRec(false);};
+        recRef.current={ws,audio:audioCtx};
+      })
+      .catch(err=>setError("讯飞鉴权请求失败："+err.message));
   },[]);
 
   const stopRec=useCallback(()=>{
-    recRef.current?.stop();
+    const ref=recRef.current;
+    if(!ref)return;
+    if(ref.ws?.readyState===WebSocket.OPEN){
+      // 发送结束帧，让服务端返回最终识别结果
+      ref.ws.send(JSON.stringify({data:{status:2,format:"audio/L16;rate=16000",encoding:"raw",audio:""}}));
+    }
+    cleanupAudio(ref.audio);
     recRef.current=null;
-    setIsRec(false);
   },[]);
 
   // ── File upload handler ───────────────────────────────────────────────────
@@ -587,6 +637,8 @@ function App(){
   // ── Face repair cycle ──────────────────────────────────────────────────────
   const startFaceRec=()=>{
     setTranscript("");
+    setTextInput("");
+    setTextMode(false);
     moveCam(AREA_CAM[img.analysis?.face?.area]||DEFAULT_FACE_CAM);
     setAiText("您觉得人物的面部，还有什么想改的呢？");
     setScreen(S.FACE_REC);
@@ -595,7 +647,8 @@ function App(){
 
   const stopFaceRec=async()=>{
     stopRec();
-    if(!transcript.trim()){
+    const finalText=transcript.trim();
+    if(!finalText){
       setAiText("好像没有收到您说的内容，可以再说一次吗？");
       return;
     }
@@ -603,7 +656,7 @@ function App(){
     setScreen(S.FACE_THINKING);
 
     try{
-      const res=await apiClassify(transcript,img.storyContext,"face");
+      const res=await apiClassify(finalText,img.storyContext,"face");
       // 显示真实错误，方便排查
       if(!res?.ok){
         const errMsg=typeof res?.error==="string"
@@ -965,7 +1018,7 @@ function App(){
               <div style={{color:P.muted,fontSize:13,textAlign:"center",
                 marginBottom:6,fontFamily:F,fontVariantNumeric:"tabular-nums",
                 display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                <span style={{color:P.rec,fontSize:11}}>● 录音中</span>
+                <span style={{color:P.rec,fontSize:11}}>● 正在录音</span>
                 {String(Math.floor(recSec/60)).padStart(2,"0")}:{String(recSec%60).padStart(2,"0")}
               </div>
               <div style={{marginTop:"auto"}}>
