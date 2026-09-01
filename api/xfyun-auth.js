@@ -35,5 +35,5 @@ module.exports = async function handler(req, res) {
   const url = `wss://${host}${path}?authorization=${encodeURIComponent(authBase64)}&date=${encodeURIComponent(date)}&host=${host}&appid=${APPID}`;
 
   res.setHeader("Access-Control-Allow-Origin", "*");
-  return res.status(200).json({ url });
+  return res.status(200).json({ url, appid: APPID });
 };
