@@ -355,7 +355,7 @@ function HomePage({onEnter}){
     {emoji:"🏥",cn:"AI引导医疗预约",en:"Medical Bridge",active:false},
   ];
   return(
-    <div style={{width:390,height:844,background:"#F5EFE4",display:"flex",
+    <div style={{width:"min(390px,100vw)",height:"100dvh",background:"#F5EFE4",display:"flex",
       flexDirection:"column",position:"relative",overflow:"hidden"}}>
       {/* Header */}
       <div style={{padding:"56px 24px 24px"}}>
@@ -531,7 +531,7 @@ function App(){
               ws.send(JSON.stringify({
                 common:{app_id:appid},
                 business:{language:"zh_cn",domain:"iat",accent:"mandarin",
-                  vad_eos:2000},
+                  vad_eos:8000},
                 data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
               }));
 
@@ -539,7 +539,7 @@ function App(){
                 const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
                 audioCtx.ctx=ctx;
                 const src=ctx.createMediaStreamSource(stream);
-                const proc=ctx.createScriptProcessor(2048,1,1);
+                const proc=ctx.createScriptProcessor(4096,1,1);
                 audioCtx.processor=proc;
                 proc.onaudioprocess=ev=>{
                   if(ws.readyState!==WebSocket.OPEN)return;
@@ -710,7 +710,6 @@ function App(){
 
   const handleFaceConfirmYes=async()=>{
     if(classResult?.attribute_status==="unsupported"){
-      // Go back to recording
       startFaceRec();
       return;
     }
@@ -720,23 +719,32 @@ function App(){
       "Gently restore while preserving the vintage photograph character",
     ];
     setSelectedOpt(null);
-    setAiText("正在为您生成三种修复效果……这可能需要十几秒，请稍等。");
+    setAiText("正在为您生成三种修复效果……每张大约需要10-20秒，请耐心等待。");
     setScreen(S.FACE_GENERATING);
 
     try{
-      const [r1,r2,r3]=await Promise.all(
-        variants.map(ins=>apiEdit(img.currentBase64,img.originMime,ins))
-      );
-      const c=[
-        r1?.ok?r1.imageBase64:null,
-        r2?.ok?r2.imageBase64:null,
-        r3?.ok?r3.imageBase64:null,
-      ];
-      setImg(s=>({...s,candidates:c}));
+      // 顺序请求避免并发限制，失败时显示真实错误
+      const results=[];
+      for(let i=0;i<variants.length;i++){
+        const r=await apiEdit(img.currentBase64,img.originMime,variants[i]);
+        if(!r?.ok){
+          // 把真实错误显示出来
+          const errDetail=typeof r?.error==="string"
+            ? r.error
+            : JSON.stringify(r?.error||r||"未知错误");
+          setError("图像生成错误："+errDetail.substring(0,120));
+          setScreen(S.FACE_INTRO);
+          return;
+        }
+        results.push(r.imageBase64||null);
+        // 每完成一张更新进度提示
+        setAiText(`正在生成第 ${i+2}/3 种效果……`);
+      }
+      setImg(s=>({...s,candidates:results}));
       setAiText("好了，这是三种不同的修复方向，您看哪个最接近您心里想的？");
       setScreen(S.FACE_OPTIONS);
     }catch(e){
-      setError("生成图片时出错，请稍后重试");
+      setError("生成图片失败："+String(e?.message||e));
       setScreen(S.FACE_INTRO);
     }
   };
@@ -833,7 +841,7 @@ function App(){
   if(screen===S.HOME)return <HomePage onEnter={()=>{setAiText("欢迎使用AI引导转译助手，您有想要修复的老照片吗？");setScreen(S.PHOTO_INTRO);}}/>;
 
   return(
-    <div style={{width:390,height:844,position:"relative",overflow:"hidden",background:P.bg}}>
+    <div style={{width:"min(390px,100vw)",height:"100dvh",position:"relative",overflow:"hidden",background:P.bg,margin:"0 auto"}}>
 
       {/* ── HIDDEN FILE INPUTS ── */}
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}}
