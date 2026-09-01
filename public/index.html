@@ -531,7 +531,7 @@ function App(){
               ws.send(JSON.stringify({
                 common:{app_id:appid},
                 business:{language:"zh_cn",domain:"iat",accent:"mandarin",
-                  vad_eos:2000,dwa:"wpgs"},
+                  vad_eos:2000},
                 data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
               }));
 
@@ -561,8 +561,21 @@ function App(){
             ws.onmessage=ev=>{
               const d=JSON.parse(ev.data);
               if(d.code!==0){setError("讯飞识别错误 "+d.code+"："+d.message);return;}
-              const words=(d.data?.result?.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
-              if(words){accumulated+=words;onResult(accumulated);}
+              const result=d.data?.result;
+              if(result){
+                const words=(result.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
+                if(result.pgs==="rpl"){
+                  // 替换模式：用当前片段替换掉之前同位置的内容
+                  const rg=result.rg||[0,0];
+                  const parts=accumulated.split("|||");
+                  parts.splice(rg[0],rg[1]-rg[0]+1,words);
+                  accumulated=parts.join("");
+                } else {
+                  // 追加模式
+                  accumulated+=words;
+                }
+                onResult(accumulated);
+              }
               if(d.data?.status===2){cleanupAudio(audioCtx);ws.close();}
             };
 
@@ -647,8 +660,6 @@ function App(){
   // ── Face repair cycle ──────────────────────────────────────────────────────
   const startFaceRec=()=>{
     setTranscript("");
-    setTextInput("");
-    setTextMode(false);
     moveCam(AREA_CAM[img.analysis?.face?.area]||DEFAULT_FACE_CAM);
     setAiText("您觉得人物的面部，还有什么想改的呢？");
     setScreen(S.FACE_REC);
