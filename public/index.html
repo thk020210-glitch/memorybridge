@@ -606,14 +606,16 @@ function App(){
       const res=await apiClassify(transcript,img.storyContext,"face");
       // 显示真实错误，方便排查
       if(!res?.ok){
-        const errMsg=res?.error||res?.raw||"API返回异常";
-        setError("混元API错误："+errMsg.slice(0,80));
+        const errMsg=typeof res?.error==="string"
+          ? res.error
+          : JSON.stringify(res?.error||res?.raw||res||"API返回异常");
+        setError("混元错误："+errMsg.substring(0,120));
         setScreen(S.FACE_INTRO);
         return;
       }
       const result=res?.result;
       if(!result){
-        setError("API返回格式异常，请检查Vercel日志");
+        setError("返回格式异常："+JSON.stringify(res).substring(0,120));
         setScreen(S.FACE_INTRO);
         return;
       }
@@ -627,7 +629,7 @@ function App(){
         setScreen(S.FACE_CONFIRM);
       }
     }catch(e){
-      setError("请求失败："+e.message);
+      setError("请求失败："+String(e?.message||e));
       setScreen(S.FACE_INTRO);
     }
   };
