@@ -50,7 +50,7 @@ Rules:
 - face.area should indicate where the MAJORITY of faces are located using the nine-grid system
 - If multiple people, area should cover the region containing most of them`;
 
-      const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-image-preview:generateContent?key=${key}`;
+      const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-image:generateContent?key=${key}`;
       const body = {
         contents: [{
           parts: [
