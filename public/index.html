@@ -514,7 +514,7 @@ function App(){
     // 从后端获取鉴权 URL（保护 APISecret 不暴露前端）
     fetch("/api/xfyun-auth")
       .then(r=>r.json())
-      .then(({url,error:e})=>{
+      .then(({url,appid,error:e})=>{
         if(!url){setError("讯飞鉴权失败："+( e||"请检查 APPID/APIKey/APISecret"));return;}
 
         const ws=new WebSocket(url);
@@ -522,9 +522,9 @@ function App(){
         let accumulated="";
 
         ws.onopen=async()=>{
-          // 发送第一帧（业务参数）
+          // 发送第一帧（业务参数），appid 从服务端传回
           ws.send(JSON.stringify({
-            common:{app_id:""},
+            common:{app_id:appid},
             business:{language:"zh_cn",domain:"iat",accent:"mandarin",vad_eos:2000,dwa:"wpgs"},
             data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
           }));
