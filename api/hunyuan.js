@@ -1,9 +1,8 @@
 // api/hunyuan.js
-// Proxy for Tencent Hunyuan API (OpenAI-compatible endpoint)
-// Handles intent classification for the voice input → repair chain
-// Prompt: v7 final — 经过七轮迭代验证的正式版本
+// 意图分类模块 — 改用 Gemini 文字模型（gemini-3.1-flash-lite）
+// 原 Hunyuan 接口因 key 格式问题暂时替换，接口签名不变，前端无需修改
 
-const HUNYUAN_ENDPOINT = "https://api.hunyuan.cloud.tencent.com/v1/chat/completions";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 function buildPrompt(transcript, storyContext) {
   const storySection = storyContext
@@ -109,39 +108,36 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const key = process.env.HUNYUAN_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    return res.status(500).json({ error: "HUNYUAN_API_KEY not configured" });
+    return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
   }
 
-  const { transcript, storyContext, stage } = req.body;
+  const { transcript, storyContext } = req.body;
 
   if (!transcript) {
     return res.status(400).json({ error: "transcript is required" });
   }
 
   const prompt = buildPrompt(transcript, storyContext);
+  const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-lite:generateContent?key=${key}`;
 
   try {
-    const resp = await fetch(HUNYUAN_ENDPOINT, {
+    const resp = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "hunyuan-turbo",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 600
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 600 }
       })
     });
 
     const data = await resp.json();
-    if (!resp.ok) return res.status(resp.status).json(data);
+    if (!resp.ok) {
+      return res.status(resp.status).json({ ok: false, error: data });
+    }
 
-    const text = data?.choices?.[0]?.message?.content || "";
-    // Strip any markdown fences the model might add despite instructions
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const cleaned = text.replace(/```json\n?|```\n?/g, "").trim();
 
     try {
@@ -152,7 +148,7 @@ module.exports = async function handler(req, res) {
     }
 
   } catch (err) {
-    console.error("Hunyuan proxy error:", err);
+    console.error("Intent classification error:", err);
     return res.status(500).json({ error: err.message });
   }
-}
+};
