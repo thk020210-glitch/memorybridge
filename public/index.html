@@ -310,11 +310,6 @@ function BottomBar({state,stages,currentStage,onGlobalCompare,testMode,onToggleT
             color:testMode?"#5A3800":P.dust,
             fontSize:11,fontFamily:F,cursor:"pointer",fontWeight:testMode?700:400,
           }}>{testMode?"测试":"正式"}</button>
-      ):(
-            height:30,padding:"0 12px",borderRadius:9,
-            border:`1px solid ${P.brownBorder}`,background:P.brownGhost,
-            color:P.brown,fontSize:12,fontFamily:F,cursor:"pointer",
-          }}>对比原图</button>
         </>
       ):(
         <div style={{flex:1,display:"flex",gap:8,alignItems:"center"}}>
