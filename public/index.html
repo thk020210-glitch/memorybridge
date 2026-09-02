@@ -296,52 +296,8 @@ function BottomBar({state,onGlobalCompare,onUndo}){
       </button>
     </div>
   );
-}){
-  const stageOrder=["face"];// damage is conditional, not in progress bar
-  const ci=stageOrder.indexOf(currentStage);
-  const showProgress=![S.HOME,S.PHOTO_INTRO,S.UPLOAD_CHOICE,S.UPLOAD_METHOD,
-    S.STORY_ASK,S.STORY_REC,S.ANALYZING].includes(state);
-  return(
-    <div style={{
-      position:"absolute",bottom:0,left:0,right:0,height:60,
-      background:P.panel,borderTop:`1px solid ${P.brownBorder}`,
-      display:"flex",alignItems:"center",padding:"0 20px 8px",gap:12,
-    }}>
-      {showProgress?(
-        <>
-          <div style={{display:"flex",gap:5,flex:1}}>
-            {["面部修复","色彩（待开发）","背景（待开发）"].map((l,i)=>(
-              <div key={l} style={{
-                height:3,flex:1,borderRadius:2,
-                background:i===0&&ci>=0?P.brown:"rgba(122,86,64,.18)",
-                transition:"background .3s",
-              }}/>
-            ))}
-          </div>
-          <div style={{color:P.dust,fontSize:11,fontFamily:F,whiteSpace:"nowrap"}}>面部修复</div>
-          <button onClick={onGlobalCompare} style={{
-            height:30,padding:"0 12px",borderRadius:9,
-            border:`1px solid ${P.brownBorder}`,background:P.brownGhost,
-            color:P.brown,fontSize:12,fontFamily:F,cursor:"pointer",
-          }}>对比原图</button>
-
-        </>
-      ):(
-        <div style={{flex:1,display:"flex",gap:8,alignItems:"center"}}>
-          {[{label:"🏠",active:state===S.HOME},{label:"🖼",active:false},{label:"👤",active:false}].map((n,i)=>(
-            <div key={i} style={{
-              width:32,height:32,borderRadius:"50%",
-              background:n.active?P.brown:P.brownGhost,
-              display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,
-            }}>{n.label}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
-// ─── COMPARISON SLIDER ─────────────────────────────────────────────────────
 function ComparisonSlider({oldSrc,newSrc,newFilter,onConfirm,onBack,backLabel,confirmLabel,hasNext}){
   const[pos,setPos]=useState(50);
   const[confirmed,setConfirmed]=useState(false);
