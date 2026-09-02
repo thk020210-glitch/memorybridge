@@ -586,7 +586,7 @@ function App(){
               ws.send(JSON.stringify({
                 common:{app_id:appid},
                 business:{language:"zh_cn",domain:"iat",accent:"mandarin",
-                  vad_eos:8000},
+                  vad_eos:30000},  // 30秒静音才结束，老年用户停顿时间长
                 data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
               }));
 
@@ -635,7 +635,20 @@ function App(){
             };
 
             ws.onerror=()=>setError("讯飞 WebSocket 连接失败，请检查网络");
-            ws.onclose=()=>{cleanupAudio(audioCtx);setIsRec(false);};
+            ws.onclose=()=>{
+              cleanupAudio(audioCtx);
+              setIsRec(false);
+              recRef.current=null;
+              // 如果用户没有主动停止（还在录音界面），400ms 后自动重连
+              setTimeout(()=>{
+                setScreen(cur=>{
+                  if(cur===S.FACE_REC||cur===S.STORY_REC){
+                    startRec(t=>setTranscript(prev=>prev+t));
+                  }
+                  return cur;
+                });
+              },400);
+            };
             recRef.current={ws,audio:audioCtx};
           })
           .catch(err=>{
@@ -747,7 +760,10 @@ function App(){
   // ── Face repair cycle ──────────────────────────────────────────────────────
   const startFaceRec=()=>{
     setTranscript("");
-    moveCam(AREA_CAM[img.analysis?.face?.area]||DEFAULT_FACE_CAM);
+    // 修正摄像机偏移：FACE_REC 抽屉 348px + 底栏 60px，确保人脸在可视区
+    const faceArea=img.analysis?.face?.area;
+    const faceCam=faceArea?AREA_CAM[faceArea]:DEFAULT_FACE_CAM;
+    moveCam(camAdjusted(faceCam, DH[S.FACE_REC]||348));
     setAiText("您觉得人物的面部，还有什么想改的呢？");
     setScreen(S.FACE_REC);
     startRec(t=>setTranscript(t));
