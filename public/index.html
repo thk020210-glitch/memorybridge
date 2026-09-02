@@ -275,7 +275,7 @@ function Drawer({height,children}){
 }
 
 // ─── BOTTOM BAR ────────────────────────────────────────────────────────────
-function BottomBar({state,stages,currentStage,onGlobalCompare}){
+function BottomBar({state,stages,currentStage,onGlobalCompare,testMode,onToggleTest}){
   const stageOrder=["face"];// damage is conditional, not in progress bar
   const ci=stageOrder.indexOf(currentStage);
   const showProgress=![S.HOME,S.PHOTO_INTRO,S.UPLOAD_CHOICE,S.UPLOAD_METHOD,
@@ -299,6 +299,18 @@ function BottomBar({state,stages,currentStage,onGlobalCompare}){
           </div>
           <div style={{color:P.dust,fontSize:11,fontFamily:F,whiteSpace:"nowrap"}}>面部修复</div>
           <button onClick={onGlobalCompare} style={{
+            height:30,padding:"0 12px",borderRadius:9,
+            border:`1px solid ${P.brownBorder}`,background:P.brownGhost,
+            color:P.brown,fontSize:12,fontFamily:F,cursor:"pointer",
+          }}>对比原图</button>
+          {/* 测试模式开关 */}
+          <button onClick={onToggleTest} style={{
+            height:30,padding:"0 10px",borderRadius:9,border:"none",
+            background:testMode?"#E8B84B":"rgba(122,86,64,.1)",
+            color:testMode?"#5A3800":P.dust,
+            fontSize:11,fontFamily:F,cursor:"pointer",fontWeight:testMode?700:400,
+          }}>{testMode?"测试":"正式"}</button>
+      ):(
             height:30,padding:"0 12px",borderRadius:9,
             border:`1px solid ${P.brownBorder}`,background:P.brownGhost,
             color:P.brown,fontSize:12,fontFamily:F,cursor:"pointer",
@@ -542,6 +554,7 @@ function App(){
   const[selectedOpt,setSelectedOpt]=useState(null);
   const[globalCompare,setGlobalCompare]=useState(false);
   const[error,setError]=useState(null);
+  const[testMode,setTestMode]=useState(true); // 默认开启测试模式，避免调试时扣费
   const[isRec,setIsRec]=useState(false);
   const[classResult,setClassResult]=useState(null);
 
@@ -724,8 +737,14 @@ function App(){
     setAiText("好的，我来帮您把照片上的损伤修一修……请稍等。");
     setScreen(S.DAMAGE_PROCESSING);
 
-    try{
-      const instruction="Repair all visible scratches, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
+    // 测试模式：跳过破损修复 API
+    if(testMode){
+      setImg(s=>({...s,damageCandidateBase64:"__filter__",prevBase64:s.originBase64}));
+      setScreen(S.DAMAGE_COMPARE);
+      return;
+    }
+
+    try{, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
       const r=await apiEdit(img.originBase64,img.originMime,instruction);
       if(r?.ok&&r.imageBase64){
         setImg(s=>({...s,damageCandidateBase64:r.imageBase64,prevBase64:s.originBase64}));
@@ -824,6 +843,19 @@ function App(){
         "温和修复面部，保留老照片的年代质感和整体氛围",
       ];
     setSelectedOpt(null);
+    // 测试模式：跳过图像生成 API，直接用 CSS filter 模拟，不扣费
+    if(testMode){
+      const mockFilters=[
+        "sepia(0.08) contrast(1.06) brightness(1.12) saturate(1.15)",
+        "sepia(0) contrast(1.22) brightness(1.28) saturate(1.2)",
+        "sepia(0.42) contrast(1.02) brightness(0.96) saturate(0.9)",
+      ];
+      setImg(s=>({...s,candidates:mockFilters.map(f=>({type:"filter",data:f}))}));
+      setAiText("好了，这是三种修复方向，您看哪个最接近您心里想的？");
+      setScreen(S.FACE_OPTIONS);
+      return;
+    }
+
     setAiText("正在为您生成三种修复效果……每张大约需要10-20秒，请耐心等待。");
     setScreen(S.FACE_GENERATING);
 
@@ -1346,6 +1378,8 @@ function App(){
         stages={[]}
         currentStage="face"
         onGlobalCompare={()=>{if(photoSrc&&originSrc)setGlobalCompare(true);}}
+        testMode={testMode}
+        onToggleTest={()=>setTestMode(m=>!m)}
       />
 
       {/* ── ERROR TOAST ── */}
