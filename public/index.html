@@ -58,6 +58,13 @@ const AREA_CAM={
 const DEFAULT_FACE_CAM={scale:1.58,tx:0,ty:-70};
 const DEFAULT_DMG_CAM ={scale:1.35,tx:14,ty:12};
 const WIDE_CAM={scale:1.0,tx:0,ty:0};
+const BOTTOM_BAR_H=60;
+
+// 有抽屉时修正摄像机纵向偏移，让焦点出现在可视区域中心而非被抽屉遮挡
+function camAdjusted(camPos, drawerH){
+  const shift=(drawerH+BOTTOM_BAR_H)/2/(camPos.scale||1);
+  return{...camPos, ty:(camPos.ty||0)-shift};
+}
 
 // App state machine
 const S={
@@ -211,7 +218,8 @@ const DH={
   [S.PHOTO_INTRO]:232,[S.UPLOAD_CHOICE]:224,[S.UPLOAD_METHOD]:224,
   [S.STORY_ASK]:256,[S.STORY_REC]:348,[S.ANALYZING]:200,
   [S.DAMAGE_CONFIRM]:268,[S.DAMAGE_PLACEHOLDER]:210,
-  [S.DAMAGE_PROCESSING]:170,[S.DAMAGE_COMPARE]:0,[S.FACE_REC]:348,
+  [S.DAMAGE_PROCESSING]:170,[S.DAMAGE_COMPARE]:0,
+  [S.FACE_INTRO]:214,[S.FACE_REC]:348,
   [S.FACE_THINKING]:192,[S.FACE_CONFIRM]:288,[S.FACE_GENERATING]:188,
   [S.FACE_OPTIONS]:448,[S.FACE_NEXT_ASK]:256,[S.COLOR_TEASER]:260,
 };
@@ -635,12 +643,13 @@ function App(){
       setImg(s=>({...s,analysis}));
 
       if(analysis?.damage?.detected&&analysis.damage.confidence!=="low"){
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
+        moveCam(camAdjusted(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM, 268));
         const desc=analysis.damage.description||"一些划痕或折痕";
         setAiText(`我检测到照片上有${desc}，您想先把这些修一修吗？`);
         setScreen(S.DAMAGE_CONFIRM);
       }else if(analysis?.damage?.detected&&analysis.damage.confidence==="low"){
         // Low confidence: let user decide
+        moveCam(camAdjusted(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM, 268));
         setAiText("照片整体保存还不错，不过似乎有一点轻微的痕迹，您觉得需要先处理一下吗？");
         setScreen(S.DAMAGE_CONFIRM);
       }else{
@@ -655,7 +664,9 @@ function App(){
 
   const goToFaceIntro=useCallback((analysis)=>{
     const faceArea=analysis?.face?.area;
-    moveCam(faceArea?AREA_CAM[faceArea]:DEFAULT_FACE_CAM);
+    // 面部引导抽屉高度 214px，需要修正摄像机偏移
+    const faceCam=faceArea?AREA_CAM[faceArea]:DEFAULT_FACE_CAM;
+    moveCam(camAdjusted(faceCam, DH[S.FACE_INTRO]||214));
     const count=analysis?.face?.personCount||1;
     const peopleNote=count>=2?"照片里有"+count+"位人物，目前支持最多两人的修复。":"";
     setAiText(`${peopleNote}让我们先从照片中人物的面部开始修复，可以吗？`);
@@ -875,7 +886,7 @@ function App(){
       setImg(s=>({...s,analysis}));
       if(analysis?.damage?.detected){
         const desc=analysis.damage.description||"一些损伤";
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
+        moveCam(camAdjusted(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM, 268));
         setAiText(`我看到照片上有${desc}，您想先修复这些吗？`);
         setScreen(S.DAMAGE_CONFIRM);
       }else{
@@ -892,7 +903,7 @@ function App(){
       const analysis=res?.result||null;
       setImg(s=>({...s,analysis}));
       if(analysis?.damage?.detected){
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
+        moveCam(camAdjusted(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM, 268));
         setAiText("检测到照片有些损伤，您想先修复吗？");
         setScreen(S.DAMAGE_CONFIRM);
       }else goToFaceIntro(analysis);
