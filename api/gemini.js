@@ -59,7 +59,7 @@ damage.detected=true仅当有明显划痕撕裂折痕污渍或缺损。只输出
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
           body: JSON.stringify({
-            model: "qwen-vl-plus",
+            model: "qwen-vl-max",
             input: { messages: [{ role: "user", content: [
               { image: `data:${mimeType||"image/jpeg"};base64,${imageBase64}` },
               { text: prompt }
