@@ -3,6 +3,8 @@
 // 图像编辑：wan2.7-image-pro（异步，原图+指令→修复后输出）
 // 前端接口不变，内部替换为 DashScope
 
+const sharp = require("sharp");
+
 const BASE = "https://dashscope.aliyuncs.com/api/v1";
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -23,10 +25,17 @@ async function pollTask(taskId, key) {
   throw new Error("任务超时（150s）");
 }
 
+// DashScope 返回的结果图通常是无损 PNG，体积可能远超 Vercel 4.5MB 的请求/响应体上限，
+// 尤其是这张图后面还要作为下一次 edit 的输入再传回来一次。统一压成较高质量的 JPEG
+// 并限制最长边，把体积稳定控制在几百 KB～1MB，两头（返回给前端 / 前端下次再传上来）都安全。
 async function urlToBase64(url) {
   const r = await fetch(url);
-  const buf = await r.arrayBuffer();
-  return Buffer.from(buf).toString("base64");
+  const buf = Buffer.from(await r.arrayBuffer());
+  const out = await sharp(buf)
+    .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 82 })
+    .toBuffer();
+  return out.toString("base64");
 }
 
 module.exports = async function handler(req, res) {
@@ -150,7 +159,7 @@ module.exports = async function handler(req, res) {
 
       // 下载图片并转 base64 返回前端
       const base64 = await urlToBase64(imageUrl);
-      return res.status(200).json({ ok: true, imageBase64: base64, mimeType: "image/png" });
+      return res.status(200).json({ ok: true, imageBase64: base64, mimeType: "image/jpeg" });
 
     } else {
       return res.status(400).json({ error: "Unknown action. Use 'analyze' or 'edit'." });
