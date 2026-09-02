@@ -102,6 +102,25 @@ function useTW(text,spd=32){
   return out;
 }
 
+// 压缩图片到 1200px 以内再转 base64，避免超出 Vercel 4.5MB 请求体限制
+function compressToBase64(file, maxPx=1200, quality=0.82){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(1, maxPx/Math.max(img.width,img.height));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.round(img.width*scale);
+      canvas.height=Math.round(img.height*scale);
+      canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
+      const dataUrl=canvas.toDataURL("image/jpeg",quality);
+      URL.revokeObjectURL(img.src);
+      res(dataUrl.split(",")[1]);
+    };
+    img.onerror=rej;
+    img.src=URL.createObjectURL(file);
+  });
+}
+
 function fileToBase64(file){
   return new Promise((res,rej)=>{
     const r=new FileReader();
@@ -119,7 +138,13 @@ async function apiAnalyze(imageBase64,mimeType){
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({action:"analyze",imageBase64,mimeType})
   });
-  return r.json();
+  if(!r.ok){
+    let errText="";
+    try{errText=await r.text();}catch{}
+    return{ok:false,error:"HTTP "+r.status+": "+errText.slice(0,150)};
+  }
+  try{return await r.json();}
+  catch(e){return{ok:false,error:"响应解析失败："+e.message};}
 }
 
 async function apiEdit(imageBase64,mimeType,instruction){
@@ -127,7 +152,13 @@ async function apiEdit(imageBase64,mimeType,instruction){
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({action:"edit",imageBase64,mimeType,instruction})
   });
-  return r.json();
+  if(!r.ok){
+    let errText="";
+    try{errText=await r.text();}catch{}
+    return{ok:false,error:"HTTP "+r.status+": "+errText.slice(0,150)};
+  }
+  try{return await r.json();}
+  catch(e){return{ok:false,error:"响应解析失败："+e.message};}
 }
 
 async function apiClassify(transcript,storyContext,stage){
@@ -629,8 +660,8 @@ function App(){
   // ── File upload handler ───────────────────────────────────────────────────
   const handleFile=useCallback(async(file)=>{
     if(!file)return;
-    const mime=file.type||"image/jpeg";
-    const b64=await fileToBase64(file);
+    const mime="image/jpeg"; // 压缩后统一输出 jpeg
+    const b64=await compressToBase64(file);
     setImg(s=>({...s,originBase64:b64,originMime:mime,currentBase64:b64,prevBase64:b64}));
     // Start analysis
     setAiText("照片收到了，我来帮您看一看……");
