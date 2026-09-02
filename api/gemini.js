@@ -1,150 +1,161 @@
 // api/gemini.js
-// Proxy for Google Gemini API — keeps API key server-side
-// Handles two actions:
-//   "analyze" — damage detection + face detection (returns JSON text)
-//   "edit"    — image editing, returns edited base64 image
+// 图像分析：Qwen-VL-Max（破损检测 + 人脸定位）
+// 图像编辑：wan2.7-image-pro（异步，原图+指令→修复后输出）
+// 前端接口不变，内部替换为 DashScope
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const BASE = "https://dashscope.aliyuncs.com/api/v1";
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function pollTask(taskId, key) {
+  for (let i = 0; i < 20; i++) {
+    await sleep(3000);
+    const r = await fetch(`${BASE}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+    const d = await r.json();
+    const status = d?.output?.task_status;
+    if (status === "SUCCEEDED") return d;
+    if (status === "FAILED") throw new Error("任务失败：" + (d?.message || "未知错误"));
+  }
+  throw new Error("任务超时（60s）");
+}
+
+async function urlToBase64(url) {
+  const r = await fetch(url);
+  const buf = await r.arrayBuffer();
+  return Buffer.from(buf).toString("base64");
+}
 
 module.exports = async function handler(req, res) {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     return res.status(200).end();
   }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  const key = process.env.DASHSCOPE_API_KEY;
+  if (!key) return res.status(500).json({ error: "DASHSCOPE_API_KEY not configured" });
 
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
-  }
-
-  const { action, imageBase64, mimeType, prompt, instruction } = req.body;
+  const { action, imageBase64, mimeType, instruction } = req.body;
 
   try {
+    // ── 图像分析：Qwen-VL-Max ───────────────────────────────────────────
     if (action === "analyze") {
-      // ── Photo analysis: damage + face detection ──────────────────────────
-      const analysisPrompt = `Analyze this photograph carefully and return ONLY a JSON object with this exact structure, no other text:
+      const prompt = `分析这张老照片，只返回以下格式的JSON，不含任何其他文字或解释：
+
 {
   "damage": {
-    "detected": boolean,
-    "confidence": "high" | "medium" | "low",
-    "area": "top-left" | "top-center" | "top-right" | "center-left" | "center" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right" | null,
-    "description": "brief Chinese description under 15 chars or null"
+    "detected": true或false,
+    "confidence": "high"或"medium"或"low",
+    "area": "top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或null,
+    "description": "15字以内中文描述或null"
   },
   "face": {
-    "detected": boolean,
-    "area": "top-left" | "top-center" | "top-right" | "center-left" | "center" | "center-right" | "bottom-left" | "bottom-center" | "bottom-right" | "full",
-    "personCount": number
+    "detected": true或false,
+    "area": "top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或"full",
+    "personCount": 数字
   }
 }
 
-Rules:
-- damage.detected = true only if there are clearly visible scratches, tears, folds, stains, or missing regions that significantly affect readability
-- damage.confidence: high = very obvious damage, medium = noticeable but not severe, low = slight aging/fading only
-- face.area should indicate where the MAJORITY of faces are located using the nine-grid system
-- If multiple people, area should cover the region containing most of them`;
+规则：
+- damage.detected=true仅当存在明显影响观看的划痕、撕裂、折痕、污渍或缺损区域
+- damage.confidence: high=非常明显，medium=可见但不严重，low=仅轻微老化
+- face.area指大多数人脸所在的九宫格区域
+- 仅输出JSON`;
 
-      const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-image:generateContent?key=${key}`;
-      const body = {
-        contents: [{
-          parts: [
-            { text: analysisPrompt },
-            { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1 }
-      };
+      const resp = await fetch(
+        `${BASE}/services/aigc/multimodal-generation/generation`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "qwen-vl-max",
+            input: {
+              messages: [{
+                role: "user",
+                content: [
+                  { image: `data:${mimeType || "image/jpeg"};base64,${imageBase64}` },
+                  { text: prompt }
+                ]
+              }]
+            },
+            parameters: { result_format: "message" }
+          })
+        }
+      );
 
-      const resp = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
+      const d = await resp.json();
+      if (!resp.ok) return res.status(resp.status).json({ ok: false, error: d });
 
-      const data = await resp.json();
-      if (!resp.ok) return res.status(resp.status).json(data);
-
-      // Extract text from response
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      // Clean any markdown fences
+      const text = d?.output?.choices?.[0]?.message?.content?.[0]?.text || "";
       const cleaned = text.replace(/```json\n?|```\n?/g, "").trim();
       try {
-        const parsed = JSON.parse(cleaned);
-        return res.status(200).json({ ok: true, result: parsed });
+        return res.status(200).json({ ok: true, result: JSON.parse(cleaned) });
       } catch {
         return res.status(200).json({ ok: true, result: null, raw: text });
       }
 
+    // ── 图像编辑：wan2.7-image-pro（异步） ─────────────────────────────
     } else if (action === "edit") {
-      // ── Image editing: single instruction → returns edited image ─────────
-      const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-image:generateContent?key=${key}`;
-      const body = {
-        contents: [{
-          parts: [
-            {
-              text: `Edit this photograph according to the following instruction. 
-Output ONLY the edited image, preserve all other aspects of the photo.
-Instruction: ${instruction}`
+      // 提交异步任务
+      const submitResp = await fetch(
+        `${BASE}/services/aigc/image-generation/generation`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+            "X-DashScope-Async": "enable"
+          },
+          body: JSON.stringify({
+            model: "qwen-image-3.0-pro",
+            input: {
+              messages: [{
+                role: "user",
+                content: [
+                  { image: `data:${mimeType || "image/jpeg"};base64,${imageBase64}` },
+                  { text: instruction }
+                ]
+              }]
             },
-            { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } }
-          ]
-        }],
-        generationConfig: {
-          responseModalities: ["IMAGE", "TEXT"],
-          temperature: 0.7
+            parameters: { n: 1, watermark: false, prompt_extend: false }
+          })
         }
-      };
+      );
 
-      const resp = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-
-      const data = await resp.json();
-      if (!resp.ok) return res.status(resp.status).json(data);
-
-      // Extract image data from response parts
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      let imageData = null;
-      let imageMime = "image/png";
-
-      for (const part of parts) {
-        if (part.inline_data?.data) {
-          imageData = part.inline_data.data;
-          imageMime = part.inline_data.mime_type || "image/png";
-          break;
-        }
-        // Some versions use inlineData (camelCase)
-        if (part.inlineData?.data) {
-          imageData = part.inlineData.data;
-          imageMime = part.inlineData.mimeType || "image/png";
-          break;
-        }
+      const submitData = await submitResp.json();
+      if (!submitResp.ok) {
+        return res.status(submitResp.status).json({ ok: false, error: submitData });
       }
 
-      if (!imageData) {
-        return res.status(200).json({
-          ok: false,
-          error: "No image returned",
-          raw: data
-        });
+      const taskId = submitData?.output?.task_id;
+      if (!taskId) return res.status(500).json({ ok: false, error: "未获取到 task_id", raw: submitData });
+
+      // 轮询等待结果
+      const result = await pollTask(taskId, key);
+
+      // 提取图片 URL
+      const imageUrl =
+        result?.output?.choices?.[0]?.message?.content?.[0]?.image ||
+        result?.output?.results?.[0]?.url;
+
+      if (!imageUrl) {
+        return res.status(500).json({ ok: false, error: "结果中没有图片", raw: result });
       }
 
-      return res.status(200).json({ ok: true, imageBase64: imageData, mimeType: imageMime });
+      // 下载图片并转 base64 返回前端
+      const base64 = await urlToBase64(imageUrl);
+      return res.status(200).json({ ok: true, imageBase64: base64, mimeType: "image/png" });
 
     } else {
       return res.status(400).json({ error: "Unknown action. Use 'analyze' or 'edit'." });
     }
 
   } catch (err) {
-    console.error("Gemini proxy error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("DashScope error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
-}
+};
