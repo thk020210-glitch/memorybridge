@@ -1,5 +1,5 @@
 // api/gemini.js
-// 分析：qwen-vl-flash（multimodal-generation 同步，速度快）
+// 分析：qwen-vl-plus（multimodal-generation 同步，JSON 输出稳定）
 // 编辑：qwen-image-3.0-pro（multimodal-generation 异步，正确端点）
 
 const BASE = "https://dashscope.aliyuncs.com/api/v1";
@@ -59,7 +59,7 @@ damage.detected=true仅当有明显划痕撕裂折痕污渍或缺损。只输出
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
           body: JSON.stringify({
-            model: "qwen-vl-flash",
+            model: "qwen-vl-plus",
             input: { messages: [{ role: "user", content: [
               { image: `data:${mimeType||"image/jpeg"};base64,${imageBase64}` },
               { text: prompt }
