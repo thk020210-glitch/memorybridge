@@ -104,18 +104,27 @@ module.exports = async function handler(req, res) {
       })
     });
 
-    const data = await resp.json();
+    let data;
+    try { data = await resp.json(); }
+    catch { const t = await resp.text(); return res.status(resp.status).json({ ok: false, error: t.slice(0,200) }); }
+
     if (!resp.ok) return res.status(resp.status).json({ ok: false, error: data });
 
     const text = data?.choices?.[0]?.message?.content || "";
-    const cleaned = text.replace(/```json\n?|```\n?/g, "").trim();
 
-    try {
-      const parsed = JSON.parse(cleaned);
-      return res.status(200).json({ ok: true, result: parsed });
-    } catch {
-      return res.status(200).json({ ok: false, raw: text, error: "JSON parse failed" });
+    // 多层清洗：先去 markdown fence，再用正则提取第一个完整 JSON 对象
+    const stripped = text.replace(/```json\n?|```\n?/g, "").trim();
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return res.status(200).json({ ok: true, result: parsed });
+      } catch { /* fall through */ }
     }
+
+    // 最后兜底：原始文本返回，供前端错误提示显示
+    return res.status(200).json({ ok: false, raw: text.slice(0,300), error: "JSON parse failed" });
 
   } catch (err) {
     console.error("Qwen-Turbo error:", err);
