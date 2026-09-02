@@ -817,7 +817,7 @@ function App(){
         "温和修复面部，保留老照片的年代质感和整体氛围",
       ];
     setSelectedOpt(null);
-    setAiText("正在为您生成三种修复效果……每张大约需要10-20秒，请耐心等待。");
+    setAiText("三种修复效果同步生成中……大约需要15-40秒，请稍等。");
     setScreen(S.FACE_GENERATING);
 
     // CSS filter 降级方案（图像API不可用时使用）
@@ -828,31 +828,23 @@ function App(){
     ];
 
     try{
-      const results=[];
-      let usedFallback=false;
-
-      for(let i=0;i<variants.length;i++){
-        setAiText(i===0?"正在生成第 1/3 种效果……":`正在生成第 ${i+1}/3 种效果……`);
-        const r=await apiEdit(img.currentBase64,img.originMime,variants[i]);
-
-        if(r?.ok&&r.imageBase64){
-          results.push({type:"base64",data:r.imageBase64});
-        } else {
-          // API 失败，标记使用降级
-          usedFallback=true;
-          results.push({type:"filter",data:FALLBACK_FILTERS[i]});
-        }
-      }
-
+      // 并行提交三个任务——总耗时=最慢那张，而非三张叠加
+      const responses=await Promise.all(
+        variants.map(ins=>apiEdit(img.currentBase64,img.originMime,ins))
+      );
+      const results=responses.map((r,i)=>
+        r?.ok&&r.imageBase64
+          ?{type:"base64",data:r.imageBase64}
+          :{type:"filter",data:FALLBACK_FILTERS[i]}
+      );
+      const usedFallback=results.some(r=>r.type==="filter");
       setImg(s=>({...s,candidates:results}));
-      if(usedFallback){
-        setAiText("好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？");
-      } else {
-        setAiText("好了，这是三种不同的修复方向，您看哪个最接近您心里想的？");
-      }
+      setAiText(usedFallback
+        ?"好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？"
+        :"好了，这是三种不同的修复方向，您看哪个最接近您心里想的？"
+      );
       setScreen(S.FACE_OPTIONS);
     }catch(e){
-      // 完全失败时也用降级
       const fallbacks=FALLBACK_FILTERS.map(f=>({type:"filter",data:f}));
       setImg(s=>({...s,candidates:fallbacks}));
       setAiText("好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？");
