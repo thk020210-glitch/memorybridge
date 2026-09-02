@@ -785,11 +785,11 @@ function App(){
 
   const handleBackToOptions=()=>{
     setSelectedOpt(null);
-    setAiText(classResult?.attribute_status==="vague"
-      ?"好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？"
-      :"好了，三种修复效果，您再选一个看看？");
+    setAiText("好了，三种修复效果，您再选一个看看？");
     setScreen(S.FACE_OPTIONS);
   };
+
+  const handleGoCompare=()=>{
     setImg(s=>({...s,prevBase64:s.currentBase64}));
     setScreen(S.FACE_COMPARE);
   };
