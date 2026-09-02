@@ -126,10 +126,18 @@ damage.detected=true仅当有明显划痕撕裂折痕污渍或缺损。只输出
         || result?.output?.results?.[0]?.url;
 
       if (!imageUrl) {
+        // 临时调试：输出真实响应结构，帮助确认正确提取路径
+        const debugInfo = {
+          choices: result?.output?.choices?.map(c=>({
+            content_types: c?.message?.content?.map(x=>Object.keys(x))
+          })),
+          results: result?.output?.results,
+          task_status: result?.output?.task_status,
+          output_keys: Object.keys(result?.output||{})
+        };
         return res.status(500).json({
           ok: false,
-          error: "结果中没有图片",
-          raw: JSON.stringify(result).slice(0, 300)
+          error: "无图片：" + JSON.stringify(debugInfo).slice(0, 350)
         });
       }
 
