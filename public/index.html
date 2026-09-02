@@ -70,6 +70,8 @@ const S={
   ANALYZING:"analyzing",
   DAMAGE_CONFIRM:"damage_confirm",
   DAMAGE_PLACEHOLDER:"damage_placeholder",
+  DAMAGE_PROCESSING:"damage_processing",
+  DAMAGE_COMPARE:"damage_compare",
   FACE_INTRO:"face_intro",
   FACE_REC:"face_rec",
   FACE_THINKING:"face_thinking",
@@ -208,7 +210,8 @@ function Spinner({size=32,color=P.brown}){
 const DH={
   [S.PHOTO_INTRO]:232,[S.UPLOAD_CHOICE]:224,[S.UPLOAD_METHOD]:224,
   [S.STORY_ASK]:256,[S.STORY_REC]:348,[S.ANALYZING]:200,
-  [S.DAMAGE_CONFIRM]:268,[S.DAMAGE_PLACEHOLDER]:210,[S.FACE_INTRO]:214,[S.FACE_REC]:348,
+  [S.DAMAGE_CONFIRM]:268,[S.DAMAGE_PLACEHOLDER]:210,
+  [S.DAMAGE_PROCESSING]:170,[S.DAMAGE_COMPARE]:0,[S.FACE_REC]:348,
   [S.FACE_THINKING]:192,[S.FACE_CONFIRM]:288,[S.FACE_GENERATING]:188,
   [S.FACE_OPTIONS]:448,[S.FACE_NEXT_ASK]:256,[S.COLOR_TEASER]:260,
 };
@@ -278,7 +281,7 @@ function BottomBar({state,stages,currentStage,onGlobalCompare}){
 }
 
 // ─── COMPARISON SLIDER ─────────────────────────────────────────────────────
-function ComparisonSlider({oldSrc,newSrc,newFilter,onConfirm,onBack,hasNext}){
+function ComparisonSlider({oldSrc,newSrc,newFilter,onConfirm,onBack,backLabel,confirmLabel,hasNext}){
   const[pos,setPos]=useState(50);
   const[confirmed,setConfirmed]=useState(false);
   const animRef=useRef(false);
@@ -346,13 +349,13 @@ function ComparisonSlider({oldSrc,newSrc,newFilter,onConfirm,onBack,hasNext}){
               fontSize:16,fontWeight:500,fontFamily:F,cursor:"pointer",
               background:"rgba(240,227,198,0.15)",
               color:"rgba(240,227,198,0.9)",
-            }}>重新选</button>
+            }}>{backLabel||"重新选"}</button>
             <button onClick={confirm} style={{
               flex:2,height:54,borderRadius:14,
               background:P.brown,border:"none",
               color:"#fff",fontSize:16,fontWeight:700,fontFamily:F,cursor:"pointer",
             }}>
-              {hasNext?"就选这张，继续":"就选这张，完成修复"}
+              {confirmLabel||(hasNext?"就选这张，继续":"就选这张，完成修复")}
             </button>
           </div>
         </div>
@@ -491,11 +494,10 @@ function App(){
   // Image state chain
   const[img,setImg]=useState({
     originBase64:null,originMime:"image/jpeg",
-    currentBase64:null,// what's shown now
-    prevBase64:null,   // previous stage (for compare left)
-    candidates:[null,null,null],// three options base64
-    storyContext:"",
-    analysis:null,     // {damage,face}
+    currentBase64:null,prevBase64:null,
+    damageCandidateBase64:null,
+    candidates:[null,null,null],
+    storyContext:"",analysis:null,
   });
 
   const[selectedOpt,setSelectedOpt]=useState(null);
@@ -661,12 +663,41 @@ function App(){
   },[moveCam]);
 
   // ── Damage skip / confirm ──────────────────────────────────────────────────
-  const handleDamageYes=()=>{
-    // ── 占位分支：检测真实，修复 UI 占位，不调用修复 API ─────────────────
-    // 聚焦到破损区域（坐标来自真实分析结果）
+  const handleDamageYes=async()=>{
     const dmgArea=img.analysis?.damage?.area;
     moveCam(dmgArea?(AREA_CAM[dmgArea]||DEFAULT_DMG_CAM):DEFAULT_DMG_CAM);
-    setScreen(S.DAMAGE_PLACEHOLDER);
+    setAiText("好的，我来帮您把照片上的损伤修一修……请稍等。");
+    setScreen(S.DAMAGE_PROCESSING);
+
+    try{
+      const instruction="Repair all visible scratches, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
+      const r=await apiEdit(img.originBase64,img.originMime,instruction);
+      if(r?.ok&&r.imageBase64){
+        setImg(s=>({...s,damageCandidateBase64:r.imageBase64,prevBase64:s.originBase64}));
+        setScreen(S.DAMAGE_COMPARE);
+      }else{
+        // API 失败，用 CSS filter 模拟修复效果作为降级
+        setImg(s=>({...s,damageCandidateBase64:"__filter__",prevBase64:s.originBase64}));
+        setScreen(S.DAMAGE_COMPARE);
+      }
+    }catch(e){
+      setError("破损修复失败："+String(e?.message||e));
+      goToFaceIntro(img.analysis);
+    }
+  };
+
+  const handleDamageCompareConfirm=()=>{
+    setImg(s=>({
+      ...s,
+      currentBase64:s.damageCandidateBase64==="__filter__"?s.originBase64:s.damageCandidateBase64,
+      damageCandidateBase64:null,
+    }));
+    goToFaceIntro(img.analysis);
+  };
+
+  const handleDamageCompareSkip=()=>{
+    setImg(s=>({...s,damageCandidateBase64:null}));
+    goToFaceIntro(img.analysis);
   };
 
   const handleDamageNo=()=>goToFaceIntro(img.analysis);
@@ -727,11 +758,13 @@ function App(){
       startFaceRec();
       return;
     }
-    const variants=classResult?.variants||[
-      "Restore faces naturally with subtle, lifelike enhancement",
-      "Brighten and sharpen the faces significantly for clarity",
-      "Gently restore while preserving the vintage photograph character",
-    ];
+    const variants=(classResult?.variants?.length>0)
+      ? classResult.variants
+      : [
+        "Restore faces naturally with subtle, lifelike enhancement",
+        "Brighten and sharpen the faces significantly for clarity",
+        "Gently restore while preserving the vintage photograph character",
+      ];
     setSelectedOpt(null);
     setAiText("正在为您生成三种修复效果……每张大约需要10-20秒，请耐心等待。");
     setScreen(S.FACE_GENERATING);
@@ -911,7 +944,25 @@ function App(){
                 background:`linear-gradient(to right,transparent,${P.sageLt},transparent)`,
                 animation:"scanln 2.2s ease-in-out infinite"}}/>
             )}
-            {/* Comparison slider */}
+            {/* 破损修复对比滑杆 */}
+            {screen===S.DAMAGE_COMPARE&&img.prevBase64&&(
+              <ComparisonSlider
+                oldSrc={imgSrc(img.prevBase64,img.originMime)}
+                newSrc={img.damageCandidateBase64==="__filter__"
+                  ? imgSrc(img.originBase64,img.originMime)
+                  : imgSrc(img.damageCandidateBase64,img.originMime)}
+                newFilter={img.damageCandidateBase64==="__filter__"
+                  ? "contrast(1.08) brightness(1.06) saturate(1.05)"
+                  : undefined}
+                onConfirm={handleDamageCompareConfirm}
+                onBack={handleDamageCompareSkip}
+                backLabel="跳过修补"
+                confirmLabel="修复效果好，继续"
+                hasNext={true}
+              />
+            )}
+
+            {/* 面部修复对比滑杆 */}
             {screen===S.FACE_COMPARE&&img.prevBase64&&img.candidates[selectedOpt]&&(()=>{
               const c=img.candidates[selectedOpt];
               const newSrc=c?.type==="base64"
@@ -1040,7 +1091,20 @@ function App(){
             </>
           )}
 
-          {/* DAMAGE_PLACEHOLDER — 破损修补 UI 占位，不调用修复 API */}
+          {/* DAMAGE_PROCESSING */}
+          {screen===S.DAMAGE_PROCESSING&&(
+            <>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                <Spinner/>
+                <div style={{color:P.ink,fontSize:15,fontFamily:F,lineHeight:1.65,flex:1}}>{aiText}</div>
+              </div>
+              <div style={{color:P.muted,fontSize:13,fontFamily:F,lineHeight:1.65,animation:"pulse 2s infinite"}}>
+                正在分析损伤区域并生成修复方案，请稍等……
+              </div>
+            </>
+          )}
+
+          {/* DAMAGE_PLACEHOLDER */}
           {screen===S.DAMAGE_PLACEHOLDER&&(
             <>
               <div style={{display:"flex",gap:10,alignItems:"flex-start",
