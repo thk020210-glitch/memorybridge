@@ -97,7 +97,7 @@ module.exports = async function handler(req, res) {
         Authorization: `Bearer ${key}`
       },
       body: JSON.stringify({
-        model: "qwen-turbo",
+        model: "qwen-plus",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
         max_tokens: 600
