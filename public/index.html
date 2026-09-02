@@ -2,1366 +2,1296 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=390,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>AI Bridge · 记忆桥梁</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>记忆桥梁 · AI Bridge</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
-html,body{background:#0A0604;display:flex;justify-content:center;min-height:100vh;font-family:-apple-system,'PingFang SC','Noto Sans SC',sans-serif}
-button,input{outline:none;-webkit-appearance:none;font-family:inherit}
+html,body{background:#080402;display:flex;justify-content:center;min-height:100vh;
+  font-family:-apple-system,'PingFang SC','Noto Sans SC',sans-serif}
+button{outline:none;-webkit-appearance:none;font-family:inherit;cursor:pointer;border:none}
 img{display:block}
 
-/* Animations */
-@keyframes blink   {0%,100%{opacity:1}50%{opacity:0}}
-@keyframes dp      {0%,100%{transform:scale(.65);opacity:.4}50%{transform:scale(1.25);opacity:1}}
-@keyframes w0      {0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1.3)}}
-@keyframes w1      {0%,100%{transform:scaleY(.85)}50%{transform:scaleY(.35)}}
-@keyframes w2      {0%,100%{transform:scaleY(1.15)}50%{transform:scaleY(.5)}}
-@keyframes w3      {0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.1)}}
-@keyframes scanln  {0%{top:-2%;opacity:0}8%{opacity:1}90%{opacity:.7}100%{top:108%;opacity:0}}
-@keyframes fadeUp  {from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-@keyframes spin    {to{transform:rotate(360deg)}}
-@keyframes pulse   {0%,100%{opacity:1}50%{opacity:.4}}
+/* ── CONTAINER ─────────────────────────────────────────────────── */
+#app{width:min(390px,100vw);height:100dvh;position:relative;overflow:hidden;background:#17100A}
+
+/* ── PHOTO CANVAS ──────────────────────────────────────────────── */
+#photo-wrap{
+  position:absolute;inset:0;z-index:0;
+  transform-origin:50% 50%;
+  transition:transform .72s cubic-bezier(.4,0,.2,1),transform-origin .72s cubic-bezier(.4,0,.2,1);
+  will-change:transform;
+}
+#photo-wrap img{width:100%;height:100%;object-fit:cover;
+  transition:filter .9s ease;background:#1c130b}
+
+/* vignette */
+.vignette{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 35%,rgba(15,6,1,.5) 100%)}
+
+/* scanning line during analysis */
+#scan-line{position:absolute;left:0;right:0;height:2px;top:-2%;z-index:1;opacity:0;pointer-events:none;
+  background:linear-gradient(to right,transparent,#8FAA84,transparent)}
+#scan-line.show{animation:scanln 2.2s ease-in-out infinite}
+
+/* stage progress bar */
+#stage-bar{position:absolute;top:0;left:0;right:0;padding:52px 20px 10px;z-index:1;
+  background:linear-gradient(to bottom,rgba(15,6,1,.65) 0%,transparent 100%);
+  display:flex;gap:5px;align-items:center;opacity:0;transition:opacity .4s}
+#stage-bar.show{opacity:1}
+.s-dot{height:3px;border-radius:2px;background:rgba(240,228,204,.25);flex:1;
+  transition:background .4s}
+.s-dot.done{background:#5C7850}
+.s-dot.active{background:#F0E4CC;flex:1.8}
+#stage-label{color:rgba(240,228,204,.55);font-size:11px;white-space:nowrap;margin-left:4px}
+
+/* ── PANEL (drawer) ─────────────────────────────────────────────── */
+#panel{
+  position:absolute;left:0;right:0;bottom:64px;z-index:2;
+  background:#F0E4CC;border-radius:22px 22px 0 0;
+  box-shadow:0 -6px 36px rgba(0,0,0,.28);
+  height:0;overflow:hidden;
+  transition:height .42s cubic-bezier(.4,0,.2,1),bottom .3s ease;
+}
+.panel-handle{width:36px;height:4px;border-radius:2px;
+  background:rgba(44,26,14,.17);margin:10px auto 0;flex-shrink:0}
+.panel-inner{padding:12px 20px 18px;display:flex;flex-direction:column;height:calc(100% - 24px)}
+
+/* back link */
+.back-btn{font-size:14px;color:#A08468;background:none;
+  display:flex;align-items:center;gap:4px;margin-bottom:8px;padding:0;flex-shrink:0}
+
+/* AI bubble */
+.ai-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;flex-shrink:0}
+.ai-avatar{width:30px;height:30px;border-radius:50%;background:#5C7850;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:14px;margin-top:2px}
+.ai-text{font-size:17px;line-height:1.68;color:#2C1A0E;font-weight:400}
+.cursor{display:inline-block;width:1.5px;height:15px;background:#5C7850;
+  margin-left:2px;animation:blink .85s infinite}
+
+/* transcript box */
+.transcript-box{
+  background:rgba(122,86,64,.1);border-radius:12px;
+  padding:10px 13px;font-size:15px;color:#2C1A0E;
+  line-height:1.65;font-style:italic;margin:6px 0;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  flex-shrink:0;
+}
+.transcript-box[data-live="0"]{color:#A08468}
+
+/* buttons */
+.btn-p{height:52px;border-radius:15px;background:#5C7850;color:#fff;
+  font-size:17px;font-weight:700;width:100%;
+  box-shadow:0 4px 18px rgba(92,120,80,.38)}
+.btn-s{height:48px;border-radius:15px;background:rgba(122,86,64,.1);
+  color:#7A5040;font-size:16px;width:100%;margin-top:8px;
+  border:1px solid rgba(122,86,64,.2)}
+.btn-r{height:52px;border-radius:15px;background:#C04830;color:#fff;
+  font-size:17px;font-weight:700;width:100%;
+  box-shadow:0 4px 18px rgba(192,72,48,.38)}
+.btn-row{display:flex;gap:10px;margin-top:auto}
+.btn-row .btn-p,.btn-row .btn-s{margin-top:0;flex:1}
+
+/* dots (thinking indicator) */
+.dots{display:flex;gap:8px}
+.dots span{width:9px;height:9px;border-radius:50%;background:#A08468;
+  animation:dp 1.15s ease-in-out infinite}
+.dots span:nth-child(2){animation-delay:.22s}
+.dots span:nth-child(3){animation-delay:.44s}
+
+/* option cards */
+.opt-card{display:flex;gap:12px;align-items:center;
+  background:rgba(122,86,64,.08);border:1.5px solid rgba(122,86,64,.18);
+  border-radius:14px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .18s}
+.opt-card.sel{background:rgba(92,120,80,.12);border-color:#5C7850}
+.opt-thumb{width:58px;height:58px;border-radius:9px;overflow:hidden;flex-shrink:0;background:rgba(122,86,64,.12)}
+.opt-thumb img{width:100%;height:100%;object-fit:cover}
+.opt-name{font-size:16px;font-weight:700;color:#2C1A0E}
+.opt-desc{font-size:12px;color:#A08468;margin-top:2px;line-height:1.4}
+.opt-check{margin-left:auto;color:#5C7850;font-size:20px;flex-shrink:0}
+
+/* spinner */
+.spin{width:28px;height:28px;border-radius:50%;border:3px solid rgba(92,120,80,.2);
+  border-top-color:#5C7850;animation:spin .9s linear infinite;flex-shrink:0}
+
+/* ── BOTTOM BAR ─────────────────────────────────────────────────── */
+#bar{position:absolute;bottom:0;left:0;right:0;height:64px;z-index:4;
+  background:#EAD9C1;border-top:1px solid rgba(122,86,64,.14);
+  display:flex;align-items:center;justify-content:space-around;
+  padding:0 12px 8px;opacity:0;transition:opacity .4s;pointer-events:none}
+#bar.show{opacity:1;pointer-events:all}
+.bar-btn{display:flex;flex-direction:column;align-items:center;gap:3px;
+  background:none;padding:6px 14px;border-radius:10px}
+.bar-ico{font-size:18px}
+.bar-lbl{font-size:10px;color:#8B6448}
+
+/* ── COMPARISON SLIDER ───────────────────────────────────────────── */
+#slider-wrap{position:absolute;inset:0;display:none;z-index:3}
+#slider-wrap.show{display:block}
+.sl-img{position:absolute;inset:0;overflow:hidden}
+.sl-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#1c130b}
+.sl-img.old{clip-path:inset(0 50% 0 0);transition:clip-path .0s}
+.sl-div{position:absolute;top:0;bottom:0;left:50%;width:2px;
+  background:rgba(255,255,255,.92);box-shadow:0 0 10px rgba(0,0,0,.3);
+  transform:translateX(-50%)}
+.sl-handle{position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;
+  background:white;box-shadow:0 2px 14px rgba(0,0,0,.28);
+  display:flex;align-items:center;justify-content:center;font-size:18px;color:#2C1A0E}
+.sl-lbl{position:absolute;bottom:150px;font-size:12px;
+  padding:4px 10px;border-radius:8px;color:#fff;pointer-events:none}
+.sl-lbl.before{left:14px;background:rgba(0,0,0,.5)}
+.sl-lbl.after{right:14px;background:#5C7850}
+/* slider bottom buttons */
+#sl-btns{position:absolute;bottom:64px;left:0;right:0;
+  padding:12px 20px 14px;
+  background:linear-gradient(to top,rgba(15,6,1,.75) 0%,transparent 100%)}
+
+/* ── HOME SCREEN ─────────────────────────────────────────────────── */
+#home{position:absolute;inset:0;background:#F2E9D8;overflow-y:auto;display:none}
+#home.show{display:block}
+.home-hd{padding:58px 24px 20px}
+.home-eyebrow{font-size:12px;color:#A08468;letter-spacing:.12em;margin-bottom:5px}
+.home-brand{font-size:34px;font-weight:700;color:#17100A;line-height:1.1}
+.home-brand span{font-size:18px;font-weight:400;color:#A08468;display:block;margin-top:4px}
+.home-cards{padding:0 20px 48px;display:flex;flex-direction:column;gap:12px}
+/* main card */
+.card-main{border-radius:22px;overflow:hidden;position:relative;height:260px;cursor:pointer;
+  background:#D4C0A4}
+.card-main img{width:100%;height:100%;object-fit:cover;
+  filter:sepia(.45) contrast(.9) brightness(.88) saturate(.7)}
+.card-overlay{position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(15,6,1,.88) 0%,rgba(15,6,1,.2) 55%,transparent 100%);
+  padding:20px}
+.card-overlay-inner{position:absolute;bottom:22px;left:22px;right:22px}
+.card-icon-ph{width:40px;height:40px;border-radius:12px;
+  background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;
+  font-size:20px;margin-bottom:10px;border:1px solid rgba(255,255,255,.25)}
+.card-title{font-size:22px;font-weight:700;color:#fff;margin-bottom:2px}
+.card-sub{font-size:13px;color:rgba(255,255,255,.62)}
+/* small cards row */
+.cards-row{display:flex;gap:12px}
+.card-sm{flex:1;border-radius:20px;overflow:hidden;position:relative;height:168px;
+  background:#C8B898;opacity:.6}
+.card-sm img{width:100%;height:100%;object-fit:cover;
+  filter:sepia(.3) contrast(.88) brightness(.85) saturate(.65)}
+.card-sm .card-overlay-inner{bottom:16px;left:16px;right:16px}
+.card-sm .card-icon-ph{width:32px;height:32px;border-radius:9px;font-size:16px;margin-bottom:7px}
+.card-sm .card-title{font-size:15px}
+.card-sm .card-sub{font-size:11px}
+.coming-tag{position:absolute;top:12px;right:12px;background:rgba(255,255,255,.18);
+  color:rgba(255,255,255,.8);font-size:10px;padding:3px 9px;border-radius:20px;
+  backdrop-filter:blur(4px)}
+/* home bottom nav */
+.home-nav{position:sticky;bottom:0;background:#EAD9C1;border-top:1px solid rgba(122,86,64,.14);
+  display:flex;justify-content:space-around;padding:10px 0 24px}
+.hnav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;
+  background:none;padding:4px 20px}
+.hnav-ico{font-size:20px}
+.hnav-lbl{font-size:10px;color:#A08468}
+.hnav-btn.active .hnav-lbl{color:#5C7850;font-weight:600}
+
+/* ── COMPLETE SCREEN ─────────────────────────────────────────────── */
+#complete{position:absolute;inset:0;background:rgba(15,6,1,.92);
+  display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding:0 24px 80px;z-index:2}
+#complete.show{display:flex}
+.cpl-preview{width:188px;height:234px;border-radius:16px;overflow:hidden;
+  box-shadow:0 12px 48px rgba(0,0,0,.6);border:2px solid rgba(240,228,204,.2);margin-bottom:22px;
+  background:#1c130b}
+.cpl-preview img{width:100%;height:100%;object-fit:cover}
+.cpl-title{font-size:24px;font-weight:700;color:#F0E4CC;margin-bottom:6px}
+.cpl-sub{font-size:14px;color:rgba(240,228,204,.55);text-align:center;
+  line-height:1.7;margin-bottom:28px}
+.cpl-actions{width:100%;display:flex;flex-direction:column;gap:10px}
+.cpl-btn{height:56px;border-radius:16px;font-size:17px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:10px;width:100%}
+.cpl-wechat{background:#07C160;color:#fff}
+.cpl-local{background:#5C7850;color:#fff}
+.cpl-group{background:rgba(240,228,204,.12);color:#F0E4CC;
+  border:1.5px solid rgba(240,228,204,.2)}
+.cpl-back{background:none;color:rgba(240,228,204,.4);font-size:14px;
+  margin-top:8px;padding:8px}
+
+/* ── ERROR TOAST ─────────────────────────────────────────────────── */
+.err-toast{position:absolute;top:52px;left:16px;right:16px;z-index:200;
+  background:rgba(194,65,40,.95);color:#fff;border-radius:12px;padding:12px 16px;
+  display:none;align-items:center;justify-content:space-between;gap:12px;
+  box-shadow:0 4px 20px rgba(0,0,0,.3);font-size:14px;line-height:1.5}
+.err-toast.show{display:flex}
+.err-toast button{background:none;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0}
+
+/* ── ANIMATIONS ─────────────────────────────────────────────────── */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes dp{0%,100%{transform:scale(.65);opacity:.4}50%{transform:scale(1.25);opacity:1}}
+@keyframes w0{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1.3)}}
+@keyframes w1{0%,100%{transform:scaleY(.85)}50%{transform:scaleY(.38)}}
+@keyframes w2{0%,100%{transform:scaleY(1.15)}50%{transform:scaleY(.52)}}
+@keyframes w3{0%,100%{transform:scaleY(.52)}50%{transform:scaleY(1.08)}}
+@keyframes scanln{0%{top:-2%;opacity:0}8%{opacity:1}90%{opacity:.7}100%{top:108%;opacity:0}}
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-const{useState,useEffect,useRef,useCallback}=React;
+<div id="app">
 
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────
-const P={
-  bg:"#150C07",panel:"#F3EAD8",panelDark:"#EDE0C4",
-  ink:"#261508",brown:"#7A5640",brownGhost:"rgba(122,86,64,.1)",
-  brownBorder:"rgba(122,86,64,.2)",dust:"#A08060",muted:"rgba(38,21,8,.42)",
-  rec:"#C24128",recGlow:"rgba(194,65,40,.35)",sage:"#718968",sageLt:"#8FAA84",
-  sageGlow:"rgba(113,137,104,.35)",white:"rgba(255,255,255,.92)",
-  handle:"rgba(38,21,8,.16)",overlay:"rgba(15,8,3,.78)",
+  <!-- HIDDEN FILE INPUT -->
+  <input id="file-input" type="file" accept="image/*" style="display:none">
+
+  <!-- HOME SCREEN -->
+  <div id="home" class="show">
+    <div class="home-hd">
+      <div class="home-eyebrow">AI Bridge</div>
+      <div class="home-brand">记忆桥梁
+        <span>让过去的每一张照片，都值得被好好看见</span>
+      </div>
+    </div>
+    <div class="home-cards">
+      <!-- Main active card -->
+      <div class="card-main" onclick="goTo('upload')">
+        <img src="https://picsum.photos/seed/vintage88/390/260" alt="">
+        <div class="card-overlay"></div>
+        <div class="card-overlay-inner">
+          <div class="card-icon-ph" title="[ICON: 记忆桥梁]">🌉</div>
+          <div class="card-title">记忆桥梁</div>
+          <div class="card-sub">Memory Bridge · 老照片修复与传承</div>
+        </div>
+      </div>
+      <!-- Small inactive cards -->
+      <div class="cards-row">
+        <div class="card-sm">
+          <img src="https://picsum.photos/seed/creative2/185/168" alt="">
+          <div class="card-overlay"></div>
+          <div class="card-overlay-inner">
+            <div class="card-icon-ph" style="width:32px;height:32px;border-radius:9px;font-size:15px" title="[ICON: Creative Bridge]">🎬</div>
+            <div class="card-title">创意桥梁</div>
+            <div class="card-sub">Creative Bridge</div>
+          </div>
+          <div class="coming-tag">即将推出</div>
+        </div>
+        <div class="card-sm">
+          <img src="https://picsum.photos/seed/medical3/185/168" alt="">
+          <div class="card-overlay"></div>
+          <div class="card-overlay-inner">
+            <div class="card-icon-ph" style="width:32px;height:32px;border-radius:9px;font-size:15px" title="[ICON: Medical Bridge]">🏥</div>
+            <div class="card-title">医疗桥梁</div>
+            <div class="card-sub">Medical Bridge</div>
+          </div>
+          <div class="coming-tag">即将推出</div>
+        </div>
+      </div>
+    </div>
+    <div class="home-nav">
+      <button class="hnav-btn active"><div class="hnav-ico">◎</div><div class="hnav-lbl">探索</div></button>
+      <button class="hnav-btn"><div class="hnav-ico">○</div><div class="hnav-lbl">我的</div></button>
+      <button class="hnav-btn"><div class="hnav-ico">○</div><div class="hnav-lbl">设置</div></button>
+    </div>
+  </div>
+
+  <!-- PHOTO CANVAS (shown for all non-home screens) -->
+  <div id="photo-wrap" style="display:none">
+    <img id="main-photo" src="" alt="老照片">
+    <div class="vignette"></div>
+  </div>
+  <div id="scan-line"></div>
+
+  <!-- STAGE BAR -->
+  <div id="stage-bar">
+    <div class="s-dot" id="sd0"></div>
+    <div class="s-dot" id="sd1"></div>
+    <div class="s-dot" id="sd2"></div>
+    <div class="s-dot" id="sd3"></div>
+    <div id="stage-label">上传照片</div>
+  </div>
+
+  <!-- COMPARISON SLIDER -->
+  <div id="slider-wrap">
+    <div class="sl-img" id="sl-new">
+      <img id="sl-photo-new" src="" alt="">
+    </div>
+    <div class="sl-img old" id="sl-old" style="clip-path:inset(0 50% 0 0)">
+      <img id="sl-photo-old" src="" alt="">
+    </div>
+    <div class="sl-div" id="sl-div">
+      <div class="sl-handle">⇔</div>
+    </div>
+    <div class="sl-lbl before" id="sl-lbl-before">修复前</div>
+    <div class="sl-lbl after" id="sl-lbl-after">修复后</div>
+    <div id="sl-btns">
+      <div style="display:flex;gap:10px">
+        <button class="btn-s" style="flex:1;margin:0;height:50px" id="sl-skip-btn"></button>
+        <button class="btn-p" style="flex:2;height:50px" id="sl-confirm-btn"></button>
+      </div>
+    </div>
+    <div class="vignette" style="pointer-events:none"></div>
+  </div>
+
+  <!-- PANEL -->
+  <div id="panel">
+    <div class="panel-handle"></div>
+    <div class="panel-inner" id="panel-inner">
+      <!-- Content injected by JS -->
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bar">
+    <button class="bar-btn" onclick="barAction('exit')">
+      <div class="bar-ico">⬡</div>
+      <div class="bar-lbl">保存退出</div>
+    </button>
+    <button class="bar-btn" onclick="barAction('undo')">
+      <div class="bar-ico">↩</div>
+      <div class="bar-lbl">撤回上步</div>
+    </button>
+    <button class="bar-btn" onclick="barAction('compare')">
+      <div class="bar-ico">◧</div>
+      <div class="bar-lbl">对比原图</div>
+    </button>
+  </div>
+
+  <!-- COMPLETE SCREEN -->
+  <div id="complete">
+    <div class="cpl-preview">
+      <img id="cpl-photo" src="" alt="">
+    </div>
+    <div class="cpl-title">修复完成了</div>
+    <div class="cpl-sub">原照片和每次修复版本都保存好了<br>可以随时再调整</div>
+    <div class="cpl-actions">
+      <button class="cpl-btn cpl-wechat" onclick="shareAction('wechat')">💬 分享给家人</button>
+      <button class="cpl-btn cpl-local" onclick="shareAction('local')">↓ 保存到相册</button>
+      <button class="cpl-btn cpl-group" onclick="shareAction('group')">👥 发送到群组</button>
+      <button class="cpl-back" onclick="goTo('home')">返回首页</button>
+    </div>
+  </div>
+
+  <!-- ERROR TOAST -->
+  <div id="err-toast" class="err-toast">
+    <span class="err-msg"></span>
+    <button onclick="clearError()">✕</button>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+// ─────────────────────────────────────────────────────────────────
+// CAMERA — nine-grid area → transform-origin percentage
+// ─────────────────────────────────────────────────────────────────
+const NINE_GRID = {
+  'top-left':{ox:30,oy:24},'top-center':{ox:50,oy:20},'top-right':{ox:70,oy:24},
+  'center-left':{ox:28,oy:48},'center':{ox:50,oy:46},'center-right':{ox:72,oy:48},
+  'bottom-left':{ox:30,oy:74},'bottom-center':{ox:50,oy:76},'bottom-right':{ox:70,oy:74},
+  'full':{ox:50,oy:50},
 };
-const F="-apple-system,'PingFang SC','Noto Sans SC',sans-serif";
-
-// Camera system v2 — transform-origin based
-// ox/oy = percentage of image where zoom anchors (the focus point)
-// scale  = zoom level
-// No drawer offset calculation needed: origin IS the focus point
-const AREA_CAM={
-  "top-left"    :{scale:1.88,ox:22,oy:14},
-  "top-center"  :{scale:1.88,ox:50,oy:14},
-  "top-right"   :{scale:1.88,ox:78,oy:14},
-  "center-left" :{scale:1.62,ox:22,oy:36},
-  "center"      :{scale:1.62,ox:50,oy:36},
-  "center-right":{scale:1.62,ox:78,oy:36},
-  "bottom-left" :{scale:1.72,ox:22,oy:52},
-  "bottom-center":{scale:1.72,ox:50,oy:52},
-  "bottom-right":{scale:1.72,ox:78,oy:52},
-  "full"        :{scale:1.0, ox:50,oy:50},
-};
-const DEFAULT_FACE_CAM={scale:1.72,ox:47,oy:38};
-const DEFAULT_DMG_CAM ={scale:1.88,ox:72,oy:14};
-const WIDE_CAM={scale:1.0,ox:50,oy:50};
-
-// App state machine
-const S={
-  HOME:"home",
-  PHOTO_INTRO:"photo_intro",
-  UPLOAD_CHOICE:"upload_choice",
-  UPLOAD_METHOD:"upload_method",
-  STORY_ASK:"story_ask",
-  STORY_REC:"story_rec",
-  ANALYZING:"analyzing",
-  DAMAGE_CONFIRM:"damage_confirm",
-  DAMAGE_PLACEHOLDER:"damage_placeholder",
-  DAMAGE_PROCESSING:"damage_processing",
-  DAMAGE_COMPARE:"damage_compare",
-  FACE_INTRO:"face_intro",
-  FACE_REC:"face_rec",
-  FACE_THINKING:"face_thinking",
-  FACE_CONFIRM:"face_confirm",
-  FACE_GENERATING:"face_generating",
-  FACE_OPTIONS:"face_options",
-  FACE_COMPARE:"face_compare",
-  FACE_NEXT_ASK:"face_next_ask",
-  COLOR_TEASER:"color_teaser",
+function camFromArea(area, scale) {
+  const g = NINE_GRID[area] || NINE_GRID.center;
+  return { ox:g.ox, oy:g.oy, sc:scale || 1.7, f:'' };
+}
+// Nudge the focal point up so the drawer doesn't cover it
+function camAdjusted(cam, drawerH) {
+  const shift = Math.min(14, ((drawerH || 0) / 844) * 22);
+  return { ...cam, oy: Math.max(10, cam.oy - shift) };
+}
+const CAM = {
+  full: { ox:50, oy:50, sc:1, f:'' },
+  wide: { ox:50, oy:50, sc:1, f:'' },
+  done: { ox:50, oy:50, sc:1, f:'' },
 };
 
-// ─── HELPERS ───────────────────────────────────────────────────────────────
-function useTW(text,spd=32){
-  const[out,setOut]=useState("");
-  useEffect(()=>{
-    if(!text){setOut("");return;}
-    setOut("");let i=0;
-    const t=setInterval(()=>{i++;setOut(text.slice(0,i));if(i>=text.length)clearInterval(t);},spd);
-    return()=>clearInterval(t);
-  },[text]);
-  return out;
+// Fallback CSS filters used only when a real image-edit call fails —
+// gives a plausible "it improved" visual without pretending nothing broke.
+const FALLBACK_DAMAGE_FILTER = 'contrast(1.08) brightness(1.06) saturate(1.05)';
+const FALLBACK_FACE_FILTERS = [
+  'sepia(0.08) contrast(1.06) brightness(1.12) saturate(1.15)',
+  'sepia(0) contrast(1.22) brightness(1.28) saturate(1.2)',
+  'sepia(0.42) contrast(1.02) brightness(0.96) saturate(0.9)',
+];
+
+// Panel heights per state
+const PH = {
+  upload:          220,
+  story_ask:       210,
+  story_rec:       270,
+  analyzing:       150,
+  damage_detect:   240,
+  damage_proc:     170,
+  face_intro:      210,
+  face_rec:        270,
+  face_thinking:   170,
+  face_confirm:    275,
+  face_generating: 180,
+  face_options:    494,
+  face_next:       232,
+  next_teaser:     252,
+};
+
+const STAGES = ['上传', '破损修复', '面部修复', '完成'];
+
+// ─────────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────────
+let cur = 'home';
+let selectedOpt = null;
+let twTimer = null;
+let recTid = null;      // interval id for the recording seconds counter
+let recCtl = null;      // {ws, ctx, processor, stream} — active 讯飞 recording session
+let slPos = 50;
+let slDragging = false;
+let faceRound = 0;
+let classResult = null;
+let pendingTranscript = '';
+
+// Photo / session state — everything the real pipeline needs to remember
+let PS = {
+  originBase64: null, originMime: 'image/jpeg',
+  currentBase64: null, prevBase64: null,
+  damageCandidateBase64: null, damageIsFilter: false,
+  candidates: [null, null, null],   // {type:'base64'|'filter', data}
+  storyContext: '', analysis: null,
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// 压缩图片到 1200px 以内再转 base64，避免超出 Vercel 4.5MB 请求体限制
-function compressToBase64(file, maxPx=1200, quality=0.82){
-  return new Promise((res,rej)=>{
-    const img=new Image();
-    img.onload=()=>{
-      const scale=Math.min(1, maxPx/Math.max(img.width,img.height));
-      const canvas=document.createElement("canvas");
-      canvas.width=Math.round(img.width*scale);
-      canvas.height=Math.round(img.height*scale);
-      canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
-      const dataUrl=canvas.toDataURL("image/jpeg",quality);
-      URL.revokeObjectURL(img.src);
-      res(dataUrl.split(",")[1]);
-    };
-    img.onerror=rej;
-    img.src=URL.createObjectURL(file);
-  });
-}
-
-function fileToBase64(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=e=>res(e.target.result.split(",")[1]);
-    r.onerror=rej;
+// ─────────────────────────────────────────────────────────────────
+// IMAGE HELPERS
+// ─────────────────────────────────────────────────────────────────
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result.split(',')[1]);
+    r.onerror = reject;
     r.readAsDataURL(file);
   });
 }
-
-function imgSrc(base64,mime){return`data:${mime||"image/jpeg"};base64,${base64}`;}
-
-// ─── API CALLS ─────────────────────────────────────────────────────────────
-async function apiAnalyze(imageBase64,mimeType){
-  const r=await fetch("/api/gemini",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({action:"analyze",imageBase64,mimeType})
+// 手机拍的原图常有 3-8MB，base64 编码后很容易撑爆 Vercel 4.5MB 的请求体上限。
+// 上传时统一用 canvas 压成 JPEG 并限制最长边，从第一步就把体积摁住。
+function compressImage(file, maxDim = 1600, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      resolve(dataUrl.split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = url;
   });
-  if(!r.ok){
-    let errText="";
-    try{errText=await r.text();}catch{}
-    return{ok:false,error:"HTTP "+r.status+": "+errText.slice(0,150)};
-  }
-  try{return await r.json();}
-  catch(e){return{ok:false,error:"响应解析失败："+e.message};}
+}
+function imgSrc(base64, mime) { return base64 ? `data:${mime || 'image/jpeg'};base64,${base64}` : ''; }
+function setMainPhoto(src) {
+  const el = document.getElementById('main-photo');
+  if (el && src) el.src = src;
 }
 
-async function apiEdit(imageBase64,mimeType,instruction){
-  const r=await fetch("/api/gemini",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({action:"edit",imageBase64,mimeType,instruction})
+// ─────────────────────────────────────────────────────────────────
+// API CALLS — talk to the existing /api/gemini, /api/hunyuan, /api/xfyun-auth
+// serverless functions. Keys never leave the server.
+// ─────────────────────────────────────────────────────────────────
+async function apiAnalyze(imageBase64, mimeType) {
+  const r = await fetch('/api/gemini', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'analyze', imageBase64, mimeType })
   });
-  if(!r.ok){
-    let errText="";
-    try{errText=await r.text();}catch{}
-    return{ok:false,error:"HTTP "+r.status+": "+errText.slice(0,150)};
-  }
-  try{return await r.json();}
-  catch(e){return{ok:false,error:"响应解析失败："+e.message};}
+  return r.json();
 }
-
-async function apiClassify(transcript,storyContext,stage){
-  const r=await fetch("/api/hunyuan",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({transcript,storyContext,stage})
+async function apiEdit(imageBase64, mimeType, instruction) {
+  const r = await fetch('/api/gemini', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'edit', imageBase64, mimeType, instruction })
+  });
+  return r.json();
+}
+async function apiClassify(transcript, storyContext, stage) {
+  const r = await fetch('/api/hunyuan', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, storyContext, stage })
   });
   return r.json();
 }
 
-// ─── SHARED UI ─────────────────────────────────────────────────────────────
-function AiBubble({text,small,style={}}){
-  const out=useTW(text,small?28:34);
-  return(
-    <div style={{display:"flex",gap:10,alignItems:"flex-start",...style}}>
-      <div style={{
-        width:small?28:34,height:small?28:34,borderRadius:"50%",
-        background:P.brown,flexShrink:0,
-        display:"flex",alignItems:"center",justifyContent:"center",
-        fontSize:small?14:17,marginTop:2,
-      }}>🌉</div>
-      <p style={{margin:0,color:P.ink,fontSize:small?15:17,
-        lineHeight:1.68,fontFamily:F,fontWeight:400,flex:1}}>
-        {out}
-        {out.length<(text||"").length&&
-          <span style={{display:"inline-block",width:1.5,height:14,
-            background:P.brown,marginLeft:2,animation:"blink .85s infinite"}}/>
+// ─────────────────────────────────────────────────────────────────
+// ERROR TOAST
+// ─────────────────────────────────────────────────────────────────
+function showError(msg) {
+  const el = document.getElementById('err-toast');
+  if (!el) return;
+  el.querySelector('.err-msg').textContent = msg;
+  el.classList.add('show');
+}
+function clearError() {
+  document.getElementById('err-toast')?.classList.remove('show');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 讯飞实时语音听写 — WebSocket, server-signed auth URL (key stays server-side)
+// ─────────────────────────────────────────────────────────────────
+function cleanupAudio(ctl) {
+  if (!ctl) return;
+  try {
+    ctl.processor?.disconnect();
+    ctl.ctx?.close();
+    ctl.stream?.getTracks().forEach(t => t.stop());
+  } catch (_) {}
+}
+
+function startRec(onResult) {
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      fetch('/api/xfyun-auth').then(r => r.json()).then(({ url, appid, error: e }) => {
+        if (!url) {
+          stream.getTracks().forEach(t => t.stop());
+          showError('讯飞鉴权失败：' + (e || '请检查后端 XFYUN 环境变量'));
+          return;
         }
-      </p>
-    </div>
-  );
+        const ws = new WebSocket(url);
+        const ctl = { ws, ctx: null, processor: null, stream };
+        let accumulated = '';
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({
+            common: { app_id: appid },
+            business: { language: 'zh_cn', domain: 'iat', accent: 'mandarin', vad_eos: 8000 },
+            data: { status: 0, format: 'audio/L16;rate=16000', encoding: 'raw', audio: '' }
+          }));
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            ctl.ctx = ctx;
+            const src = ctx.createMediaStreamSource(stream);
+            const proc = ctx.createScriptProcessor(4096, 1, 1);
+            ctl.processor = proc;
+            proc.onaudioprocess = ev => {
+              if (ws.readyState !== WebSocket.OPEN) return;
+              const inp = ev.inputBuffer.getChannelData(0);
+              const pcm = new Int16Array(inp.length);
+              for (let i = 0; i < inp.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, inp[i] * 32768));
+              const b64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+              ws.send(JSON.stringify({ data: { status: 1, format: 'audio/L16;rate=16000', encoding: 'raw', audio: b64 } }));
+            };
+            src.connect(proc); proc.connect(ctx.destination);
+          } catch (err) {
+            showError('音频处理失败：' + err.message);
+            ws.close();
+          }
+        };
+
+        ws.onmessage = ev => {
+          const d = JSON.parse(ev.data);
+          if (d.code !== 0) { showError('讯飞识别错误 ' + d.code + '：' + d.message); return; }
+          const result = d.data?.result;
+          if (result) {
+            const words = (result.ws || []).map(w => w.cw.map(c => c.w).join('')).join('');
+            if (result.pgs === 'rpl') {
+              const rg = result.rg || [0, 0];
+              const parts = accumulated.split('|||');
+              parts.splice(rg[0], rg[1] - rg[0] + 1, words);
+              accumulated = parts.join('');
+            } else {
+              accumulated += words;
+            }
+            onResult(accumulated);
+          }
+          if (d.data?.status === 2) { cleanupAudio(ctl); ws.close(); }
+        };
+
+        ws.onerror = () => showError('讯飞 WebSocket 连接失败，请检查网络');
+        ws.onclose = () => cleanupAudio(ctl);
+        recCtl = ctl;
+      }).catch(err => {
+        stream.getTracks().forEach(t => t.stop());
+        showError('讯飞鉴权请求失败：' + err.message);
+      });
+    })
+    .catch(() => showError('麦克风权限被拒绝，请在浏览器地址栏点击锁图标允许麦克风'));
 }
 
-function Btn({label,onClick,primary,full,danger,disabled,style={}}){
-  return(
-    <button onClick={disabled?undefined:onClick} style={{
-      flex:full?undefined:1,width:full?"100%":undefined,
-      height:56,borderRadius:15,border:"none",
-      fontSize:17,fontWeight:primary||danger?700:500,
-      fontFamily:F,cursor:disabled?"not-allowed":"pointer",
-      background:danger?P.rec:primary?P.brown:P.brownGhost,
-      color:(primary||danger)?"#fff":P.brown,
-      border:(!primary&&!danger)?`1.5px solid ${P.brownBorder}`:"none",
-      boxShadow:primary?`0 4px 18px ${P.brownBorder}`:
-                danger?`0 4px 18px ${P.recGlow}`:"none",
-      opacity:disabled?.45:1,
-      transition:"opacity .18s",
-      display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-      ...style,
-    }}>{label}</button>
-  );
+function stopRec() {
+  const ctl = recCtl;
+  if (!ctl) return;
+  if (ctl.ws?.readyState === WebSocket.OPEN) {
+    ctl.ws.send(JSON.stringify({ data: { status: 2, format: 'audio/L16;rate=16000', encoding: 'raw', audio: '' } }));
+  }
+  cleanupAudio(ctl);
+  recCtl = null;
 }
 
-function Dots(){
-  return(
-    <div style={{display:"flex",gap:8,justifyContent:"flex-start",paddingLeft:44}}>
-      {[0,1,2].map(i=>(
-        <div key={i} style={{width:9,height:9,borderRadius:"50%",background:P.dust,
-          animation:`dp 1.15s ease-in-out ${i*.22}s infinite`}}/>
-      ))}
-    </div>
-  );
+// ─────────────────────────────────────────────────────────────────
+// CAMERA
+// ─────────────────────────────────────────────────────────────────
+function setCamera(preset) {
+  const c = (typeof preset === 'string') ? (CAM[preset] || CAM.full) : (preset || CAM.full);
+  const wrap = document.getElementById('photo-wrap');
+  const photoEl = document.getElementById('main-photo');
+  wrap.style.transformOrigin = `${c.ox}% ${c.oy}%`;
+  wrap.style.transform = `scale(${c.sc})`;
+  photoEl.style.filter = c.f || '';
 }
 
-function Waveform({color=P.rec}){
-  const h=[.42,.75,1,.58,.88,.5,.78,.65,.42,.96,.6,.82,.46];
-  return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,height:52}}>
-      {h.map((v,i)=>(
-        <div key={i} style={{width:4,borderRadius:2,background:color,
-          height:`${v*44}px`,animation:`w${i%4} .72s ease-in-out ${i*.065}s infinite`}}/>
-      ))}
-    </div>
-  );
+// ─────────────────────────────────────────────────────────────────
+// STAGE BAR
+// ─────────────────────────────────────────────────────────────────
+function setStage(idx, label) {
+  const bar = document.getElementById('stage-bar');
+  bar.classList.add('show');
+  document.getElementById('stage-label').textContent = label || STAGES[idx] || '';
+  [0,1,2,3].forEach(i => {
+    const d = document.getElementById('sd'+i);
+    d.className = 's-dot' + (i<idx?' done':i===idx?' active':'');
+  });
 }
 
-function Spinner({size=32,color=P.brown}){
-  return(
-    <div style={{width:size,height:size,borderRadius:"50%",
-      border:`3px solid rgba(122,86,64,.2)`,
-      borderTopColor:color,animation:"spin .9s linear infinite"}}/>
-  );
+// ─────────────────────────────────────────────────────────────────
+// TYPEWRITER
+// ─────────────────────────────────────────────────────────────────
+function typewrite(el, text, speed=30) {
+  if (twTimer) clearInterval(twTimer);
+  el.textContent = '';
+  let i = 0;
+  twTimer = setInterval(() => {
+    el.textContent += text[i++];
+    if (i >= text.length) clearInterval(twTimer);
+  }, speed);
 }
 
-// ─── DRAWER ────────────────────────────────────────────────────────────────
-// height per state
-const DH={
-  [S.PHOTO_INTRO]:232,[S.UPLOAD_CHOICE]:224,[S.UPLOAD_METHOD]:224,
-  [S.STORY_ASK]:256,[S.STORY_REC]:348,[S.ANALYZING]:200,
-  [S.DAMAGE_CONFIRM]:268,[S.DAMAGE_PLACEHOLDER]:210,
-  [S.DAMAGE_PROCESSING]:170,[S.DAMAGE_COMPARE]:0,
-  [S.FACE_INTRO]:214,[S.FACE_REC]:348,
-  [S.FACE_THINKING]:192,[S.FACE_CONFIRM]:288,[S.FACE_GENERATING]:188,
-  [S.FACE_OPTIONS]:448,[S.FACE_NEXT_ASK]:256,[S.COLOR_TEASER]:260,
+// ─────────────────────────────────────────────────────────────────
+// PANEL
+// ─────────────────────────────────────────────────────────────────
+function showPanel(h, html, opts = {}) {
+  const p = document.getElementById('panel');
+  const pi = document.getElementById('panel-inner');
+  const bar = document.getElementById('bar');
+  const showBar = !opts.hideBar;
+  p.style.height = h + 'px';
+  p.style.bottom = showBar ? '64px' : '0';
+  pi.innerHTML = html;
+  bar.classList.toggle('show', showBar);
+  const at = pi.querySelector('.ai-text');
+  const msg = at?.dataset.msg;
+  if (at && msg) typewrite(at, msg);
+}
+
+function hidePanel() {
+  const p = document.getElementById('panel');
+  p.style.height = '0';
+  p.style.bottom = '64px';
+  document.getElementById('panel-inner').innerHTML = '';
+}
+
+// ─────────────────────────────────────────────────────────────────
+// COMPACT RECORDING INDICATOR — dot + small waveform + timer, one row
+// ─────────────────────────────────────────────────────────────────
+function recIndicatorHtml(timerId, col='#C04830') {
+  const h = [.5,.85,1,.6,.9,.55,.8];
+  return `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0">
+    <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;animation:blink 1s infinite"></span>
+    <div style="display:flex;align-items:center;gap:3px;height:26px;flex-shrink:0">${h.map((v,i)=>
+      `<div style="width:3px;border-radius:2px;background:${col};height:${v*24}px;animation:w${i%4} .72s ease-in-out ${i*.07}s infinite"></div>`
+    ).join('')}</div>
+    <span style="font-size:13px;color:#A08468;flex-shrink:0" id="${timerId}">00:00</span>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SLIDER — now takes real image sources instead of named demo modes
+// ─────────────────────────────────────────────────────────────────
+function showSlider(oldSrc, newSrc, opts = {}) {
+  slPos = 50;
+  const sw = document.getElementById('slider-wrap');
+  sw.classList.add('show');
+  document.getElementById('bar').classList.add('show');
+
+  document.getElementById('sl-photo-old').src = oldSrc;
+  document.getElementById('sl-photo-old').style.filter = '';
+  document.getElementById('sl-photo-new').src = newSrc;
+  document.getElementById('sl-photo-new').style.filter = opts.newFilter || '';
+  document.getElementById('sl-lbl-before').textContent = opts.beforeLabel || '修复前';
+  document.getElementById('sl-lbl-after').textContent = opts.afterLabel || '修复后';
+
+  const skipBtn = document.getElementById('sl-skip-btn');
+  const confirmBtn = document.getElementById('sl-confirm-btn');
+
+  if (opts.closeOnly) {
+    skipBtn.style.display = 'none';
+    confirmBtn.style.flex = '1';
+    confirmBtn.textContent = opts.confirmLabel || '关闭对比';
+    confirmBtn.onclick = () => { closeSlider(); opts.onConfirm && opts.onConfirm(); };
+  } else {
+    skipBtn.style.display = '';
+    confirmBtn.style.flex = '2';
+    skipBtn.textContent = opts.skipLabel || '重新选';
+    confirmBtn.textContent = opts.confirmLabel || '满意，继续';
+    skipBtn.onclick = () => { closeSlider(); opts.onSkip && opts.onSkip(); };
+    confirmBtn.onclick = () => animSliderConfirm(opts.onConfirm);
+  }
+  updateSlider();
+}
+
+function updateSlider() {
+  document.getElementById('sl-old').style.clipPath = `inset(0 ${100-slPos}% 0 0)`;
+  document.getElementById('sl-div').style.left = slPos + '%';
+}
+
+function animSliderConfirm(onDone) {
+  document.getElementById('sl-btns').style.opacity = '0';
+  document.getElementById('sl-btns').style.pointerEvents = 'none';
+  const start = slPos;
+  const dur = 620;
+  const t0 = performance.now();
+  function step(t) {
+    const p = Math.min(1, (t-t0)/dur);
+    const ease = p < .5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+    slPos = start * (1-ease);
+    updateSlider();
+    if (p < 1) requestAnimationFrame(step);
+    else { closeSlider(); onDone && onDone(); }
+  }
+  requestAnimationFrame(step);
+}
+
+function closeSlider() {
+  document.getElementById('slider-wrap').classList.remove('show');
+  document.getElementById('sl-btns').style.opacity = '';
+  document.getElementById('sl-btns').style.pointerEvents = '';
+}
+
+// slider drag
+(function(){
+  const sw = document.getElementById('slider-wrap');
+  function move(cx) {
+    const r = sw.getBoundingClientRect();
+    slPos = Math.max(4, Math.min(96, ((cx - r.left)/r.width)*100));
+    updateSlider();
+  }
+  sw.addEventListener('mousedown', e=>{ slDragging=true; move(e.clientX); });
+  sw.addEventListener('touchstart', e=>{ slDragging=true; move(e.touches[0].clientX); },{passive:true});
+  window.addEventListener('mousemove', e=>{ if(slDragging) move(e.clientX); });
+  window.addEventListener('touchmove', e=>{ if(slDragging) move(e.touches[0].clientX); },{passive:true});
+  window.addEventListener('mouseup', ()=>slDragging=false);
+  window.addEventListener('touchend', ()=>slDragging=false);
+})();
+
+// ─────────────────────────────────────────────────────────────────
+// PHOTO CANVAS SHOW/HIDE
+// ─────────────────────────────────────────────────────────────────
+function showCanvas() { document.getElementById('photo-wrap').style.display = ''; }
+function hideCanvas() { document.getElementById('photo-wrap').style.display = 'none'; }
+
+// ─────────────────────────────────────────────────────────────────
+// FILE UPLOAD
+// ─────────────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let b64;
+  try {
+    b64 = await compressImage(file); // 统一压成 JPEG，限制最长边
+  } catch (err) {
+    b64 = await fileToBase64(file); // 压缩失败兜底：极少数机型/格式不支持 canvas 编码时，退回原图
+  }
+  const mime = 'image/jpeg';
+  PS.originBase64 = b64; PS.originMime = mime;
+  PS.currentBase64 = b64; PS.prevBase64 = b64;
+  setMainPhoto(imgSrc(b64, mime));
+  goTo('story_ask');
+});
+
+// ─────────────────────────────────────────────────────────────────
+// SCREEN ROUTER
+// ─────────────────────────────────────────────────────────────────
+function goTo(state) {
+  cur = state;
+  stopRec();
+  if (recTid) clearInterval(recTid);
+  closeSlider();
+  hidePanel();
+  document.getElementById('scan-line').classList.remove('show');
+  document.getElementById('home').classList.remove('show');
+  document.getElementById('complete').classList.remove('show');
+  document.getElementById('stage-bar').classList.remove('show');
+  document.getElementById('bar').classList.remove('show');
+
+  if (state === 'home') {
+    hideCanvas();
+    faceRound = 0; selectedOpt = null; classResult = null; pendingTranscript = '';
+    PS = { originBase64:null, originMime:'image/jpeg', currentBase64:null, prevBase64:null,
+      damageCandidateBase64:null, damageIsFilter:false, candidates:[null,null,null],
+      storyContext:'', analysis:null };
+    clearError();
+    document.getElementById('home').classList.add('show');
+    return;
+  }
+
+  if (state === 'complete') {
+    showCanvas();
+    setCamera('done');
+    const finalSrc = imgSrc(PS.currentBase64 || PS.originBase64, PS.originMime);
+    setMainPhoto(finalSrc);
+    document.getElementById('cpl-photo').src = finalSrc;
+    document.getElementById('complete').classList.add('show');
+    document.getElementById('bar').classList.add('show');
+    return;
+  }
+
+  showCanvas();
+  screens[state]?.();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SCREEN DEFINITIONS
+// ─────────────────────────────────────────────────────────────────
+const screens = {
+
+  upload() {
+    setCamera('full'); setStage(0,'上传照片');
+    showPanel(PH.upload, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="欢迎使用记忆桥梁。您有一张想要修复的老照片吗？"></div>
+      </div>
+      <div style="margin-top:auto">
+        <button class="btn-p" onclick="document.getElementById('file-input').click()">📷 选一张老照片</button>
+        <button class="btn-s" onclick="void 0" style="opacity:.45;cursor:not-allowed">📂 查看修复记录</button>
+      </div>`);
+  },
+
+  story_ask() {
+    setCamera('full'); setStage(0,'上传照片');
+    showPanel(PH.story_ask, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="照片收到了，原照片我们一直留着，放心。您想不想先讲讲这张照片的故事？"></div>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('story_rec')">我来讲一讲</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('analyzing')">直接开始修图</button>
+      </div>`);
+  },
+
+  story_rec() {
+    setCamera('full'); setStage(0,'讲述故事');
+    let sec = 0;
+    recTid = setInterval(()=>{ sec++;
+      const t = document.getElementById('rec-timer');
+      if(t) t.textContent = `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+      else clearInterval(recTid);
+    },1000);
+    showPanel(PH.story_rec, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="好的，您慢慢说，讲讲这张照片背后的故事……"></div>
+      </div>
+      ${recIndicatorHtml('rec-timer','#7A5040')}
+      <div class="transcript-box" id="story-transcript" data-live="0">请对着手机讲述这张照片的故事……</div>
+      <button class="btn-r" style="margin-top:auto" onclick="finishStoryRec()">说完了，开始修图</button>`);
+    startRec(text => {
+      const el = document.getElementById('story-transcript');
+      if (el) { el.dataset.live = '1'; el.textContent = text; }
+    });
+  },
+
+  analyzing() {
+    setCamera('full'); setStage(0,'分析照片中');
+    document.getElementById('scan-line').classList.add('show');
+    showPanel(PH.analyzing, `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div class="spin"></div>
+        <div style="font-size:15px;color:#2C1A0E;line-height:1.65">正在分析这张照片……</div>
+      </div>
+      <div style="font-size:12px;color:#A08468;line-height:1.6">原照片始终保留，每个版本都会自动存档。</div>`);
+    runAnalysis();
+  },
+
+  damage_detect() {
+    const dmg = PS.analysis?.damage;
+    setCamera(camAdjusted(camFromArea(dmg?.area, 1.8), PH.damage_detect));
+    setStage(1,'破损修复');
+    const isLow = dmg?.confidence === 'low';
+    const msg = isLow
+      ? '照片整体保存还不错，不过似乎有一点轻微的痕迹，您觉得需要先处理一下吗？'
+      : `我检测到照片上有${esc(dmg?.description || '一些划痕或折痕')}，您想先把这些修一修吗？`;
+    showPanel(PH.damage_detect, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="${msg}"></div>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('damage_proc')">好的，先修损伤</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('face_intro')">直接修人物</button>
+      </div>`);
+  },
+
+  damage_proc() {
+    setCamera(camAdjusted(camFromArea(PS.analysis?.damage?.area, 1.8), PH.damage_proc));
+    setStage(1,'修复损伤中');
+    showPanel(PH.damage_proc, `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div class="spin"></div>
+        <div style="font-size:15px;color:#2C1A0E;line-height:1.65" id="proc-txt">正在分析损伤区域……</div>
+      </div>
+      <div style="height:3px;border-radius:2px;background:rgba(122,86,64,.15);margin-top:4px">
+        <div id="proc-bar" style="height:100%;border-radius:2px;background:#5C7850;width:8%;transition:width .3s ease"></div>
+      </div>`);
+    runDamageRepair();
+  },
+
+  face_intro() {
+    const face = PS.analysis?.face;
+    setCamera(camAdjusted(camFromArea(face?.area, 1.7), PH.face_intro));
+    setStage(2,'面部修复');
+    const count = face?.personCount || 1;
+    const note = count >= 2 ? `照片里有${count}位人物，目前支持最多两人的修复。` : '';
+    showPanel(PH.face_intro, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="${esc(note)}${faceRound===0?'让我们从照片中人物的面部开始修复，可以吗？':'面部还有什么想继续调整的吗？'}"></div>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('face_rec')">好的，开始吧</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('next_teaser')">跳过这步</button>
+      </div>`);
+  },
+
+  face_rec() {
+    setCamera(camAdjusted(camFromArea(PS.analysis?.face?.area, 1.7), PH.face_rec));
+    setStage(2,'面部修复');
+    let sec = 0;
+    recTid = setInterval(()=>{ sec++;
+      const t = document.getElementById('frec-timer');
+      if(t) t.textContent = `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+      else clearInterval(recTid);
+    },1000);
+    showPanel(PH.face_rec, `
+      <div style="font-size:14px;color:#A08468;text-align:center;margin-bottom:4px">
+        您觉得面部这里，想改什么呢？
+      </div>
+      ${recIndicatorHtml('frec-timer')}
+      <div class="transcript-box" id="face-transcript" data-live="0">请对着手机说说想怎么调整……</div>
+      <button class="btn-r" style="margin-top:auto" onclick="finishFaceRec()">我说完了</button>`);
+    startRec(text => {
+      const el = document.getElementById('face-transcript');
+      if (el) { el.dataset.live = '1'; el.textContent = text; }
+    });
+  },
+
+  face_thinking() {
+    setStage(2,'理解您的想法');
+    showPanel(PH.face_thinking, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="我听到了，稍等一下……"></div>
+      </div>
+      <div class="dots" style="margin-top:14px;padding-left:44px">
+        <span></span><span></span><span></span>
+      </div>`);
+    runClassify();
+  },
+
+  face_confirm() {
+    setStage(2,'面部修复');
+    const unsupported = classResult?.attribute_status === 'unsupported';
+    const msg = unsupported
+      ? ('这个我暂时还做不到——' + esc(classResult?.unsupported_reason || '超出了当前修复范围') + '，要换一个方向说说吗？')
+      : esc(classResult?.confirmation_phrase || '我听到了，是这个意思吗？');
+    showPanel(PH.face_confirm, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="${msg}"></div>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        ${unsupported
+          ? `<button class="btn-p" style="flex:1" onclick="goTo('face_rec')">好的，换个方向说</button>`
+          : `<button class="btn-s" style="margin:0;flex:1" onclick="goTo('face_rec')">重新说</button>
+             <button class="btn-p" style="flex:2" onclick="goTo('face_generating')">对的，就是这个意思</button>`
+        }
+      </div>`);
+  },
+
+  face_generating() {
+    setStage(2,'生成修复效果');
+    selectedOpt = null;
+    showPanel(PH.face_generating, `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div class="spin"></div>
+        <div style="font-size:15px;color:#2C1A0E;line-height:1.65" id="gen-txt">正在生成第 1/3 种效果……</div>
+      </div>
+      <div style="font-size:12px;color:#A08468;line-height:1.6">每张大约需要10-20秒，请耐心等待。</div>`);
+    runFaceGenerate();
+  },
+
+  face_options() {
+    setStage(2,'选择方案');
+    const labels = (classResult?.intents?.length > 0) ? ['方案一','方案二','方案三'] : ['自然修复','明亮清晰','保留年代感'];
+    const descs = ['轻度还原，保留神韵','强化细节，整体明亮','修复损伤，留年代感'];
+    const optHtml = PS.candidates.map((c,i)=>{
+      const thumbSrc = c?.type === 'base64' ? imgSrc(c.data, PS.originMime) : imgSrc(PS.currentBase64, PS.originMime);
+      const thumbFilter = c?.type === 'filter' ? c.data : '';
+      return `
+      <div class="opt-card" id="opt-${i}" onclick="selectOpt(${i})">
+        <div class="opt-thumb">
+          <img src="${thumbSrc}" style="filter:${thumbFilter}">
+        </div>
+        <div style="flex:1">
+          <div class="opt-name">${labels[i]}</div>
+          <div class="opt-desc">${descs[i]}</div>
+        </div>
+        <div class="opt-check" id="oc-${i}" style="display:none">✓</div>
+      </div>`;
+    }).join('');
+    showPanel(PH.face_options, `
+      <div class="ai-row" style="margin-bottom:10px">
+        <div class="ai-avatar" style="width:26px;height:26px;font-size:13px" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" style="font-size:15px" data-msg="好了，这是三种修复效果，您看哪个最接近心里想的？"></div>
+      </div>
+      <div style="flex:1;overflow:hidden">${optHtml}</div>
+      <button class="btn-p" id="use-btn" style="opacity:.4;pointer-events:none;margin-top:6px" onclick="goTo('face_compare')">用这张对比一下</button>`,
+      { hideBar: true });
+  },
+
+  face_next() {
+    setCamera(camAdjusted(camFromArea(PS.analysis?.face?.area, 1.7), PH.face_next));
+    setStage(2,'面部修复');
+    showPanel(PH.face_next, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="这个效果保存好了。面部还想继续调整吗？"></div>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('face_rec')">还想改改</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('next_teaser')">面部修完了</button>
+      </div>`);
+  },
+
+  next_teaser() {
+    setCamera('done'); setStage(3,'下一步');
+    showPanel(PH.next_teaser, `
+      <div class="ai-row">
+        <div class="ai-avatar" title="[ICON: AI Avatar]">🌉</div>
+        <div class="ai-text" data-msg="接下来，您想不想改改照片的色调和颜色？"></div>
+      </div>
+      <div style="padding:10px 12px;background:rgba(122,86,64,.08);border-radius:12px;
+        font-size:13px;color:#A08468;margin:10px 0;line-height:1.6">
+        💡 色彩调整、背景修复功能即将开放，敬请期待
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('complete')">直接完成修复</button>
+      </div>`);
+  },
+
+  face_compare() {
+    setStage(2,'对比修复效果');
+    PS.prevBase64 = PS.currentBase64;
+    const c = PS.candidates[selectedOpt];
+    const newSrc = c?.type === 'base64' ? imgSrc(c.data, PS.originMime) : imgSrc(PS.currentBase64, PS.originMime);
+    const newFilter = c?.type === 'filter' ? c.data : '';
+    setCamera('wide');
+    showSlider(
+      imgSrc(PS.prevBase64, PS.originMime),
+      newSrc,
+      {
+        newFilter,
+        skipLabel: '重新选',
+        confirmLabel: faceRound < 2 ? '满意，继续调' : '满意，完成修复',
+        onSkip: () => goTo('face_options'),
+        onConfirm: () => {
+          const chosen = PS.candidates[selectedOpt];
+          if (chosen?.type === 'base64') PS.currentBase64 = chosen.data;
+          PS.candidates = [null,null,null];
+          selectedOpt = null;
+          faceRound++;
+          goTo(faceRound < 2 ? 'face_next' : 'next_teaser');
+        }
+      }
+    );
+  },
 };
 
-function Drawer({height,children}){
-  if(!height)return null;
-  return(
-    <div style={{
-      position:"absolute",bottom:60,left:0,right:0,height,
-      background:P.panel,borderRadius:"22px 22px 0 0",
-      boxShadow:"0 -6px 40px rgba(0,0,0,.3)",
-      transition:"height .38s cubic-bezier(.4,0,.2,1)",
-      overflow:"hidden",display:"flex",flexDirection:"column",
-    }}>
-      <div style={{width:36,height:4,borderRadius:2,background:P.handle,
-        margin:"10px auto 0",flexShrink:0}}/>
-      <div style={{flex:1,padding:"14px 20px 20px",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        {children}
-      </div>
-    </div>
+// ─────────────────────────────────────────────────────────────────
+// ASYNC PIPELINE — the actual real-API steps
+// ─────────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  try {
+    const res = await apiAnalyze(PS.originBase64, PS.originMime);
+    if (cur !== 'analyzing') return; // user navigated away meanwhile
+    PS.analysis = res?.result || null;
+    if (PS.analysis?.damage?.detected) goTo('damage_detect');
+    else goTo('face_intro');
+  } catch (e) {
+    if (cur !== 'analyzing') return;
+    PS.analysis = null;
+    goTo('face_intro'); // graceful degrade: skip analysis, still let the user work
+  }
+}
+
+async function runDamageRepair() {
+  const steps = ['分析损伤区域…','识别纹理特征…','应用修复算法…','等待生成结果…'];
+  let i = 0;
+  const cycle = setInterval(() => {
+    if (cur !== 'damage_proc') { clearInterval(cycle); return; }
+    i = Math.min(i + 1, steps.length - 1);
+    const txt = document.getElementById('proc-txt');
+    const bar = document.getElementById('proc-bar');
+    if (txt) txt.textContent = steps[i];
+    if (bar) bar.style.width = (12 + i * 22) + '%'; // cosmetic only — real completion below decides when we move on
+  }, 1800);
+
+  const instruction = "Repair all visible scratches, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
+
+  let result = { ok: false };
+  try { result = await apiEdit(PS.originBase64, PS.originMime, instruction); }
+  catch (e) { result = { ok: false, error: String(e?.message || e) }; }
+
+  clearInterval(cycle);
+  if (cur !== 'damage_proc') return;
+
+  if (result?.ok && result.imageBase64) {
+    PS.damageCandidateBase64 = result.imageBase64;
+    PS.damageIsFilter = false;
+  } else {
+    // API 不可用时优雅降级：用滤镜模拟观感变化，不打断体验
+    PS.damageCandidateBase64 = PS.originBase64;
+    PS.damageIsFilter = true;
+  }
+  PS.prevBase64 = PS.originBase64;
+  setCamera('wide');
+  showSlider(
+    imgSrc(PS.prevBase64, PS.originMime),
+    imgSrc(PS.damageCandidateBase64, PS.originMime),
+    {
+      newFilter: PS.damageIsFilter ? FALLBACK_DAMAGE_FILTER : '',
+      skipLabel: '跳过修补',
+      confirmLabel: '修复效果好，继续',
+      onSkip: () => { PS.damageCandidateBase64 = null; goTo('face_intro'); },
+      onConfirm: () => {
+        PS.currentBase64 = PS.damageIsFilter ? PS.originBase64 : PS.damageCandidateBase64;
+        PS.damageCandidateBase64 = null;
+        goTo('face_intro');
+      }
+    }
   );
 }
 
-// ─── BOTTOM BAR ────────────────────────────────────────────────────────────
-function BottomBar({state,onGlobalCompare,onUndo}){
-  const isHome=[S.HOME,S.PHOTO_INTRO,S.UPLOAD_CHOICE,S.UPLOAD_METHOD].includes(state);
-  if(isHome)return null;
-  const btnStyle={display:"flex",flexDirection:"column",alignItems:"center",
-    gap:3,background:"none",padding:"4px 0",flex:1,border:"none",cursor:"pointer"};
-  return(
-    <div style={{
-      position:"absolute",bottom:0,left:0,right:0,height:64,
-      background:"#EAD9C1",borderTop:"1px solid rgba(122,86,64,.14)",
-      display:"flex",alignItems:"center",padding:"0 16px 8px",
-    }}>
-      <button style={btnStyle} onClick={()=>alert("保存进度并退出")}>
-        <span style={{fontSize:20}}>⬡</span>
-        <span style={{fontSize:10,color:"#8B6448",fontFamily:F}}>保存退出</span>
-      </button>
-      <button style={btnStyle} onClick={onUndo}>
-        <span style={{fontSize:20}}>↩</span>
-        <span style={{fontSize:10,color:"#8B6448",fontFamily:F}}>撤回上步</span>
-      </button>
-      <button style={btnStyle} onClick={onGlobalCompare}>
-        <span style={{fontSize:20}}>◧</span>
-        <span style={{fontSize:10,color:"#8B6448",fontFamily:F}}>对比原图</span>
-      </button>
-    </div>
-  );
+function finishStoryRec() {
+  clearInterval(recTid);
+  stopRec();
+  const el = document.getElementById('story-transcript');
+  PS.storyContext = (el && el.dataset.live === '1') ? el.textContent.trim() : '';
+  goTo('analyzing');
 }
 
-function ComparisonSlider({oldSrc,newSrc,newFilter,onConfirm,onBack,backLabel,confirmLabel,hasNext}){
-  const[pos,setPos]=useState(50);
-  const[confirmed,setConfirmed]=useState(false);
-  const animRef=useRef(false);
-  const cRef=useRef();
-
-  const move=useCallback((cx)=>{
-    if(animRef.current||confirmed)return;
-    const r=cRef.current?.getBoundingClientRect();
-    if(!r)return;
-    setPos(Math.max(4,Math.min(96,((cx-r.left)/r.width)*100)));
-  },[confirmed]);
-
-  const onTM=e=>move(e.touches[0].clientX);
-  const onMM=e=>{if(e.buttons===1)move(e.clientX);};
-
-  const confirm=()=>{setConfirmed(true);animRef.current=true;setPos(0);};
-  const onTE=()=>{if(animRef.current){animRef.current=false;onConfirm();}};
-
-  return(
-    <div ref={cRef} style={{position:"absolute",inset:0,cursor:"col-resize"}}
-      onMouseMove={onMM} onTouchMove={onTM}>
-      {/* New photo — full bg */}
-      <img src={newSrc} style={{position:"absolute",inset:0,
-        width:"100%",height:"100%",objectFit:"cover",
-        filter:newFilter||undefined}}/>
-      {/* Old photo — clipped */}
-      <div style={{
-        position:"absolute",inset:0,
-        clipPath:`inset(0 ${100-pos}% 0 0)`,
-        transition:animRef.current?"clip-path .65s cubic-bezier(.4,0,.2,1)":"none",
-      }} onTransitionEnd={onTE}>
-        <img src={oldSrc} style={{position:"absolute",inset:0,
-          width:"100%",height:"100%",objectFit:"cover"}}/>
-        {!confirmed&&(
-          <div style={{position:"absolute",bottom:160,left:14,
-            background:"rgba(0,0,0,.5)",color:"#fff",fontSize:12,
-            padding:"4px 10px",borderRadius:8,fontFamily:F}}>修复前</div>
-        )}
-      </div>
-      {/* Divider */}
-      {!confirmed&&(
-        <div style={{position:"absolute",top:0,bottom:0,left:`${pos}%`,
-          width:2,background:P.white,boxShadow:"0 0 10px rgba(0,0,0,.3)",
-          transform:"translateX(-50%)",pointerEvents:"none"}}>
-          <div style={{position:"absolute",top:"50%",left:"50%",
-            transform:"translate(-50%,-50%)",width:44,height:44,borderRadius:"50%",
-            background:P.white,boxShadow:"0 2px 12px rgba(0,0,0,.28)",
-            display:"flex",alignItems:"center",justifyContent:"center",
-            fontSize:18,color:P.ink,pointerEvents:"all",cursor:"col-resize"}}>⇔</div>
-        </div>
-      )}
-      {!confirmed&&(
-        <div style={{position:"absolute",bottom:160,right:14,
-          background:P.sage,color:"#fff",fontSize:12,
-          padding:"4px 10px",borderRadius:8,fontFamily:F}}>修复后</div>
-      )}
-      {/* Confirm + Back buttons */}
-      {!confirmed&&(
-        <div style={{position:"absolute",bottom:60,left:0,right:0,
-          padding:"12px 20px 16px",
-          background:"linear-gradient(to top,rgba(0,0,0,.72),transparent)"}}>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={onBack} style={{
-              flex:1,height:54,borderRadius:14,border:"none",
-              fontSize:16,fontWeight:500,fontFamily:F,cursor:"pointer",
-              background:"rgba(240,227,198,0.15)",
-              color:"rgba(240,227,198,0.9)",
-            }}>{backLabel||"重新选"}</button>
-            <button onClick={confirm} style={{
-              flex:2,height:54,borderRadius:14,
-              background:P.brown,border:"none",
-              color:"#fff",fontSize:16,fontWeight:700,fontFamily:F,cursor:"pointer",
-            }}>
-              {confirmLabel||(hasNext?"就选这张，继续":"就选这张，完成修复")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function finishFaceRec() {
+  clearInterval(recTid);
+  stopRec();
+  const el = document.getElementById('face-transcript');
+  const text = (el && el.dataset.live === '1') ? el.textContent.trim() : '';
+  if (!text) { showError('好像没有收到您说的内容，请再说一次。'); goTo('face_rec'); return; }
+  pendingTranscript = text;
+  goTo('face_thinking');
 }
 
-// ─── HOME PAGE ─────────────────────────────────────────────────────────────
-function HomePage({onEnter}){
-  const PHOTO_MEM="https://picsum.photos/seed/vintage88/390/260";
-  const PHOTO_CRE="https://picsum.photos/seed/creative2/185/168";
-  const PHOTO_MED="https://picsum.photos/seed/medical3/185/168";
-  const cardBase={borderRadius:20,overflow:"hidden",position:"relative",cursor:"pointer",background:"#D4C0A4"};
-  function Overlay({icon,title,sub,active}){
-    return(
-      <div style={{position:"absolute",inset:0,
-        background:"linear-gradient(to top,rgba(15,6,1,.88) 0%,rgba(15,6,1,.18) 55%,transparent 100%)"}}>
-        <div style={{position:"absolute",bottom:20,left:20,right:20}}>
-          {/* Icon placeholder - replace with real SVG icon */}
-          <div style={{width:40,height:40,borderRadius:12,
-            background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.25)",
-            display:"flex",alignItems:"center",justifyContent:"center",
-            fontSize:20,marginBottom:10,
-            title:"[ICON PLACEHOLDER]"}}>{icon}</div>
-          <div style={{fontSize:22,fontWeight:700,color:"#fff",marginBottom:2}}>{title}</div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,.6)"}}>{sub}</div>
-        </div>
-        {!active&&(
-          <div style={{position:"absolute",top:14,right:14,
-            background:"rgba(255,255,255,.18)",color:"rgba(255,255,255,.8)",
-            fontSize:10,padding:"3px 10px",borderRadius:20}}>即将推出</div>
-        )}
-      </div>
+async function runClassify() {
+  try {
+    const res = await apiClassify(pendingTranscript, PS.storyContext, 'face');
+    if (cur !== 'face_thinking') return;
+    if (!res?.ok) {
+      const errMsg = typeof res?.error === 'string' ? res.error : JSON.stringify(res?.error || res?.raw || res || '接口返回异常');
+      showError('意图理解失败：' + errMsg.slice(0,120));
+      goTo('face_intro');
+      return;
+    }
+    classResult = res.result;
+    goTo('face_confirm');
+  } catch (e) {
+    if (cur !== 'face_thinking') return;
+    showError('请求失败：' + String(e?.message || e));
+    goTo('face_intro');
+  }
+}
+
+async function runFaceGenerate() {
+  const variants = (classResult?.variants?.length > 0) ? classResult.variants : [
+    '轻度修复面部细节，保留人物自然神韵，整体风格不变',
+    '明显提升面部清晰度和亮度，让人物面貌更鲜明',
+    '温和修复面部，保留老照片的年代质感和整体氛围',
+  ];
+  const results = [];
+  for (let i = 0; i < variants.length; i++) {
+    if (cur !== 'face_generating') return;
+    const txt = document.getElementById('gen-txt');
+    if (txt) txt.textContent = `正在生成第 ${i+1}/3 种效果……`;
+    try {
+      const r = await apiEdit(PS.currentBase64, PS.originMime, variants[i]);
+      results.push((r?.ok && r.imageBase64) ? { type:'base64', data:r.imageBase64 } : { type:'filter', data:FALLBACK_FACE_FILTERS[i] });
+    } catch (e) {
+      results.push({ type:'filter', data:FALLBACK_FACE_FILTERS[i] });
+    }
+  }
+  if (cur !== 'face_generating') return;
+  PS.candidates = results;
+  goTo('face_options');
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SELECT OPTION
+// ─────────────────────────────────────────────────────────────────
+function selectOpt(i) {
+  selectedOpt = i;
+  [0,1,2].forEach(j=>{
+    document.getElementById('opt-'+j)?.classList.toggle('sel',j===i);
+    const oc = document.getElementById('oc-'+j);
+    if (oc) oc.style.display = j===i?'block':'none';
+  });
+  const btn = document.getElementById('use-btn');
+  if (btn) { btn.style.opacity='1'; btn.style.pointerEvents=''; }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BAR ACTIONS
+// ─────────────────────────────────────────────────────────────────
+function barAction(action) {
+  if (action === 'exit') {
+    if (confirm('保存进度并退出？')) goTo('home');
+  } else if (action === 'undo') {
+    const prev = {
+      damage_proc:'damage_detect', face_rec:'face_intro',
+      face_thinking:'face_rec', face_confirm:'face_thinking',
+      face_generating:'face_confirm', face_options:'face_confirm',
+      face_compare:'face_options', face_next:'face_compare',
+      next_teaser:'face_next', complete:'next_teaser',
+    };
+    if (prev[cur]) goTo(prev[cur]);
+  } else if (action === 'compare') {
+    if (!PS.originBase64) return;
+    showSlider(
+      imgSrc(PS.originBase64, PS.originMime),
+      imgSrc(PS.currentBase64 || PS.originBase64, PS.originMime),
+      { closeOnly:true, beforeLabel:'原始照片', afterLabel:'当前效果', confirmLabel:'关闭对比' }
     );
   }
-  return(
-    <div style={{width:"min(390px,100vw)",height:"100dvh",background:"#F2E9D8",
-      display:"flex",flexDirection:"column",overflowY:"auto"}}>
-      {/* Header */}
-      <div style={{padding:"58px 24px 20px"}}>
-        <div style={{fontSize:12,color:"#A08468",letterSpacing:".12em",marginBottom:5}}>AI Bridge</div>
-        <div style={{fontSize:34,fontWeight:700,color:"#17100A",lineHeight:1.1}}>记忆桥梁</div>
-        <div style={{fontSize:16,fontWeight:400,color:"#A08468",marginTop:5,lineHeight:1.5}}>
-          让过去的每一张照片，都值得被好好看见
-        </div>
-      </div>
-      {/* Cards */}
-      <div style={{padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:12,flex:1}}>
-        {/* Main card - Memory Bridge (active) */}
-        <div style={{...cardBase,height:260}} onClick={onEnter}>
-          <img src={PHOTO_MEM} style={{width:"100%",height:"100%",objectFit:"cover",
-            filter:"sepia(.45) contrast(.9) brightness(.88) saturate(.7)"}}/>
-          <Overlay icon="🌉" title="记忆桥梁" sub="Memory Bridge · 老照片修复与传承" active={true}/>
-        </div>
-        {/* Small cards row */}
-        <div style={{display:"flex",gap:12}}>
-          <div style={{...cardBase,flex:1,height:168,opacity:.62,cursor:"not-allowed"}}>
-            <img src={PHOTO_CRE} style={{width:"100%",height:"100%",objectFit:"cover",
-              filter:"sepia(.3) contrast(.88) brightness(.85) saturate(.65)"}}/>
-            <Overlay icon="🎬" title="创意桥梁" sub="Creative Bridge" active={false}/>
-          </div>
-          <div style={{...cardBase,flex:1,height:168,opacity:.62,cursor:"not-allowed"}}>
-            <img src={PHOTO_MED} style={{width:"100%",height:"100%",objectFit:"cover",
-              filter:"sepia(.3) contrast(.88) brightness(.85) saturate(.65)"}}/>
-            <Overlay icon="🏥" title="医疗桥梁" sub="Medical Bridge" active={false}/>
-          </div>
-        </div>
-      </div>
-      {/* Bottom nav */}
-      <div style={{background:"#EAD9C1",borderTop:"1px solid rgba(122,86,64,.14)",
-        display:"flex",justifyContent:"space-around",padding:"10px 0 24px",flexShrink:0}}>
-        {[{l:"探索",a:true},{l:"我的",a:false},{l:"设置",a:false}].map(({l,a})=>(
-          <div key={l} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-            opacity:a?1:.45}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:a?"#5C7850":"rgba(122,86,64,.3)"}}/>
-            <div style={{fontSize:11,color:a?"#5C7850":"#A08468",fontWeight:a?600:400}}>{l}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
-// ─── PRE-UPLOAD BACKGROUND ─────────────────────────────────────────────────
-function PreUploadBg(){
-  return(
-    <div style={{position:"absolute",inset:0,
-      background:`linear-gradient(160deg,#2E1A0E 0%,#1A0D07 45%,#0E0805 100%)`,
-      display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{textAlign:"center",opacity:.22}}>
-        <div style={{fontSize:64,marginBottom:12}}>🌉</div>
-        <div style={{color:"#F3EAD8",fontSize:20,fontWeight:600,letterSpacing:2}}>记忆桥梁</div>
-      </div>
-    </div>
-  );
+// ─────────────────────────────────────────────────────────────────
+// SHARE ACTIONS
+// ─────────────────────────────────────────────────────────────────
+function shareAction(type) {
+  const msgs = { wechat:'已分享给家人（小程序功能）', local:'已保存到相册', group:'已发送到群组（小程序功能）' };
+  alert(msgs[type] || '操作完成');
 }
 
-// ─── GLOBAL COMPARE OVERLAY ────────────────────────────────────────────────
-function GlobalCompare({originSrc,currentSrc,onClose}){
-  const[pos,setPos]=useState(50);
-  const cRef=useRef();
-  const move=cx=>{
-    const r=cRef.current?.getBoundingClientRect();
-    if(!r)return;
-    setPos(Math.max(4,Math.min(96,((cx-r.left)/r.width)*100)));
-  };
-  return(
-    <div ref={cRef} style={{position:"absolute",inset:0,zIndex:100,cursor:"col-resize"}}
-      onMouseMove={e=>{if(e.buttons===1)move(e.clientX);}}
-      onTouchMove={e=>move(e.touches[0].clientX)}>
-      <img src={currentSrc} style={{position:"absolute",inset:0,
-        width:"100%",height:"100%",objectFit:"cover"}}/>
-      <div style={{position:"absolute",inset:0,
-        clipPath:`inset(0 ${100-pos}% 0 0)`}}>
-        <img src={originSrc} style={{position:"absolute",inset:0,
-          width:"100%",height:"100%",objectFit:"cover"}}/>
-        <div style={{position:"absolute",bottom:140,left:14,
-          background:"rgba(0,0,0,.5)",color:"#fff",fontSize:12,
-          padding:"4px 10px",borderRadius:8}}>原始照片</div>
-      </div>
-      <div style={{position:"absolute",top:0,bottom:0,left:`${pos}%`,
-        width:2,background:P.white,transform:"translateX(-50%)",pointerEvents:"none"}}>
-        <div style={{position:"absolute",top:"50%",left:"50%",
-          transform:"translate(-50%,-50%)",width:44,height:44,borderRadius:"50%",
-          background:P.white,display:"flex",alignItems:"center",justifyContent:"center",
-          fontSize:18,pointerEvents:"all",cursor:"col-resize"}}>⇔</div>
-      </div>
-      <div style={{position:"absolute",bottom:140,right:14,
-        background:P.sage,color:"#fff",fontSize:12,
-        padding:"4px 10px",borderRadius:8}}>当前修复</div>
-      <div style={{position:"absolute",top:0,left:0,right:0,
-        padding:"52px 20px 14px",
-        background:"linear-gradient(to bottom,rgba(0,0,0,.6),transparent)"}}>
-        <div style={{color:"#fff",fontSize:13,textAlign:"center",fontFamily:F}}>
-          拖动滑杆对比原图 · 点击任意处返回
-        </div>
-      </div>
-      <div style={{position:"absolute",inset:0}} onClick={onClose}/>
-    </div>
-  );
-}
-
-// ─── MAIN APP ──────────────────────────────────────────────────────────────
-function App(){
-  // ── State ────────────────────────────────────────────────────────────────
-  const[screen,setScreen]=useState(S.HOME);
-  const[cam,setCam]=useState(WIDE_CAM);
-  const[aiText,setAiText]=useState("");
-  const[recSec,setRecSec]=useState(0);
-  const[transcript,setTranscript]=useState("");
-
-  // Image state chain
-  const[img,setImg]=useState({
-    originBase64:null,originMime:"image/jpeg",
-    currentBase64:null,prevBase64:null,
-    damageCandidateBase64:null,
-    candidates:[null,null,null],
-    storyContext:"",analysis:null,
-  });
-
-  const[selectedOpt,setSelectedOpt]=useState(null);
-  const[globalCompare,setGlobalCompare]=useState(false);
-  const[error,setError]=useState(null);
-  const[isRec,setIsRec]=useState(false);
-  const[classResult,setClassResult]=useState(null);
-
-  const recRef=useRef(null);   // {ws, audio} iFlytek WebSocket
-  const fileRef=useRef();
-  const camRef=useRef();
-
-  // ── Recording timer ───────────────────────────────────────────────────────
-  useEffect(()=>{
-    if(screen!==S.FACE_REC&&screen!==S.STORY_REC){setRecSec(0);return;}
-    const t=setInterval(()=>setRecSec(s=>s+1),1000);
-    return()=>clearInterval(t);
-  },[screen]);
-
-  // ── Camera helper ─────────────────────────────────────────────────────────
-  const moveCam=useCallback((pos)=>setCam(pos||WIDE_CAM),[]);
-
-  // ── iFlytek WebSocket 实时语音识别 ────────────────────────────────────────
-  function cleanupAudio(a){
-    if(!a)return;
-    try{a.processor?.disconnect();a.ctx?.close();a.stream?.getTracks().forEach(t=>t.stop());}catch(_){}
-  }
-
-  const startRec=useCallback((onResult)=>{
-    // 先请求麦克风权限，拿到 stream 后再连 WebSocket
-    navigator.mediaDevices.getUserMedia({audio:true})
-      .then(stream=>{
-        fetch("/api/xfyun-auth")
-          .then(r=>r.json())
-          .then(({url,appid,error:e})=>{
-            if(!url){
-              stream.getTracks().forEach(t=>t.stop());
-              setError("讯飞鉴权失败："+(e||"请检查 APPID/APIKey/APISecret"));
-              return;
-            }
-
-            const ws=new WebSocket(url);
-            const audioCtx={ctx:null,processor:null,stream};
-            let accumulated="";
-
-            ws.onopen=()=>{
-              ws.send(JSON.stringify({
-                common:{app_id:appid},
-                business:{language:"zh_cn",domain:"iat",accent:"mandarin",
-                  vad_eos:30000},  // 30秒静音才结束，老年用户停顿时间长
-                data:{status:0,format:"audio/L16;rate=16000",encoding:"raw",audio:""}
-              }));
-
-              try{
-                const ctx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
-                audioCtx.ctx=ctx;
-                const src=ctx.createMediaStreamSource(stream);
-                const proc=ctx.createScriptProcessor(4096,1,1);
-                audioCtx.processor=proc;
-                proc.onaudioprocess=ev=>{
-                  if(ws.readyState!==WebSocket.OPEN)return;
-                  const inp=ev.inputBuffer.getChannelData(0);
-                  const pcm=new Int16Array(inp.length);
-                  for(let i=0;i<inp.length;i++)pcm[i]=Math.max(-32768,Math.min(32767,inp[i]*32768));
-                  const b64=btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-                  ws.send(JSON.stringify({data:{status:1,format:"audio/L16;rate=16000",
-                    encoding:"raw",audio:b64}}));
-                };
-                src.connect(proc);proc.connect(ctx.destination);
-                setIsRec(true);
-              }catch(err){
-                setError("音频处理失败："+err.message);
-                ws.close();
-              }
-            };
-
-            ws.onmessage=ev=>{
-              const d=JSON.parse(ev.data);
-              if(d.code!==0){setError("讯飞识别错误 "+d.code+"："+d.message);return;}
-              const result=d.data?.result;
-              if(result){
-                const words=(result.ws||[]).map(w=>w.cw.map(c=>c.w).join("")).join("");
-                if(result.pgs==="rpl"){
-                  // 替换模式：用当前片段替换掉之前同位置的内容
-                  const rg=result.rg||[0,0];
-                  const parts=accumulated.split("|||");
-                  parts.splice(rg[0],rg[1]-rg[0]+1,words);
-                  accumulated=parts.join("");
-                } else {
-                  // 追加模式
-                  accumulated+=words;
-                }
-                onResult(accumulated);
-              }
-              if(d.data?.status===2){cleanupAudio(audioCtx);ws.close();}
-            };
-
-            ws.onerror=()=>setError("讯飞 WebSocket 连接失败，请检查网络");
-            ws.onclose=()=>{
-              cleanupAudio(audioCtx);
-              setIsRec(false);
-              recRef.current=null;
-              // 如果用户没有主动停止（还在录音界面），400ms 后自动重连
-              setTimeout(()=>{
-                setScreen(cur=>{
-                  if(cur===S.FACE_REC||cur===S.STORY_REC){
-                    startRec(t=>setTranscript(prev=>prev+t));
-                  }
-                  return cur;
-                });
-              },400);
-            };
-            recRef.current={ws,audio:audioCtx};
-          })
-          .catch(err=>{
-            stream.getTracks().forEach(t=>t.stop());
-            setError("讯飞鉴权请求失败："+err.message);
-          });
-      })
-      .catch(()=>setError("麦克风权限被拒绝，请在浏览器地址栏点击锁图标允许麦克风"));
-  },[]);
-
-  const stopRec=useCallback(()=>{
-    const ref=recRef.current;
-    if(!ref)return;
-    if(ref.ws?.readyState===WebSocket.OPEN){
-      // 发送结束帧，让服务端返回最终识别结果
-      ref.ws.send(JSON.stringify({data:{status:2,format:"audio/L16;rate=16000",encoding:"raw",audio:""}}));
-    }
-    cleanupAudio(ref.audio);
-    recRef.current=null;
-  },[]);
-
-  // ── File upload handler ───────────────────────────────────────────────────
-  const handleFile=useCallback(async(file)=>{
-    if(!file)return;
-    const mime="image/jpeg"; // 压缩后统一输出 jpeg
-    const b64=await compressToBase64(file);
-    setImg(s=>({...s,originBase64:b64,originMime:mime,currentBase64:b64,prevBase64:b64}));
-    // Start analysis
-    setAiText("照片收到了，我来帮您看一看……");
-    setScreen(S.ANALYZING);
-    moveCam(WIDE_CAM);
-
-    try{
-      const res=await apiAnalyze(b64,mime);
-      const analysis=res?.result||null;
-      setImg(s=>({...s,analysis}));
-
-      if(analysis?.damage?.detected&&analysis.damage.confidence!=="low"){
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
-        const desc=analysis.damage.description||"一些划痕或折痕";
-        setAiText(`我检测到照片上有${desc}，您想先把这些修一修吗？`);
-        setScreen(S.DAMAGE_CONFIRM);
-      }else if(analysis?.damage?.detected&&analysis.damage.confidence==="low"){
-        // Low confidence: let user decide
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
-        setAiText("照片整体保存还不错，不过似乎有一点轻微的痕迹，您觉得需要先处理一下吗？");
-        setScreen(S.DAMAGE_CONFIRM);
-      }else{
-        goToFaceIntro(analysis);
-      }
-    }catch(e){
-      // Fallback: skip analysis, go to face
-      setImg(s=>({...s,analysis:null}));
-      goToFaceIntro(null);
-    }
-  },[moveCam]);
-
-  const goToFaceIntro=useCallback((analysis)=>{
-    const faceArea=analysis?.face?.area;
-    const faceCam=faceArea?AREA_CAM[faceArea]:DEFAULT_FACE_CAM;
-    moveCam(faceCam);
-    const count=analysis?.face?.personCount||1;
-    const peopleNote=count>=2?"照片里有"+count+"位人物，目前支持最多两人的修复。":"";
-    setAiText(`${peopleNote}让我们先从照片中人物的面部开始修复，可以吗？`);
-    setScreen(S.FACE_INTRO);
-  },[moveCam]);
-
-  // ── Damage skip / confirm ──────────────────────────────────────────────────
-  const handleDamageYes=async()=>{
-    const dmgArea=img.analysis?.damage?.area;
-    moveCam(dmgArea?(AREA_CAM[dmgArea]||DEFAULT_DMG_CAM):DEFAULT_DMG_CAM);
-    setAiText("好的，我来帮您把照片上的损伤修一修……请稍等。");
-    setScreen(S.DAMAGE_PROCESSING);
-
-    try{
-      const instruction="Repair all visible scratches, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
-      const r=await apiEdit(img.originBase64,img.originMime,instruction);
-      if(r?.ok&&r.imageBase64){
-        setImg(s=>({...s,damageCandidateBase64:r.imageBase64,prevBase64:s.originBase64}));
-        setScreen(S.DAMAGE_COMPARE);
-      }else{
-        // API 失败，用 CSS filter 模拟修复效果作为降级
-        setImg(s=>({...s,damageCandidateBase64:"__filter__",prevBase64:s.originBase64}));
-        setScreen(S.DAMAGE_COMPARE);
-      }
-    }catch(e){
-      setError("破损修复失败："+String(e?.message||e));
-      goToFaceIntro(img.analysis);
-    }
-  };
-
-  const handleDamageCompareConfirm=()=>{
-    setImg(s=>({
-      ...s,
-      currentBase64:s.damageCandidateBase64==="__filter__"?s.originBase64:s.damageCandidateBase64,
-      damageCandidateBase64:null,
-    }));
-    goToFaceIntro(img.analysis);
-  };
-
-  const handleDamageCompareSkip=()=>{
-    setImg(s=>({...s,damageCandidateBase64:null}));
-    goToFaceIntro(img.analysis);
-  };
-
-  const handleDamageNo=()=>goToFaceIntro(img.analysis);
-
-  // ── Face repair cycle ──────────────────────────────────────────────────────
-  const startFaceRec=()=>{
-    setTranscript("");
-    const faceArea=img.analysis?.face?.area;
-    const faceCam=faceArea?AREA_CAM[faceArea]:DEFAULT_FACE_CAM;
-    moveCam(faceCam);
-    setAiText("您觉得人物的面部，还有什么想改的呢？");
-    setScreen(S.FACE_REC);
-    startRec(t=>setTranscript(t));
-  };
-
-  const stopFaceRec=async()=>{
-    stopRec();
-    const finalText=transcript.trim();
-    if(!finalText){
-      setAiText("好像没有收到您说的内容，可以再说一次吗？");
-      return;
-    }
-    setAiText("我听到了，稍等一下……");
-    setScreen(S.FACE_THINKING);
-
-    try{
-      const res=await apiClassify(finalText,img.storyContext,"face");
-      // 显示真实错误，方便排查
-      if(!res?.ok){
-        const errMsg=typeof res?.error==="string"
-          ? res.error
-          : JSON.stringify(res?.error||res?.raw||res||"API返回异常");
-        setError("混元错误："+errMsg.substring(0,120));
-        setScreen(S.FACE_INTRO);
-        return;
-      }
-      const result=res?.result;
-      if(!result){
-        setError("返回格式异常："+JSON.stringify(res).substring(0,120));
-        setScreen(S.FACE_INTRO);
-        return;
-      }
-      setClassResult(result);
-
-      if(result.attribute_status==="unsupported"){
-        setAiText("这个我暂时还做不到——"+(result.unsupported_reason||"超出了当前修复范围")+"，要换一个方向说说吗？");
-        setScreen(S.FACE_CONFIRM);
-      }else{
-        setAiText(result.confirmation_phrase||"我理解了，是这个意思吗？");
-        setScreen(S.FACE_CONFIRM);
-      }
-    }catch(e){
-      setError("请求失败："+String(e?.message||e));
-      setScreen(S.FACE_INTRO);
-    }
-  };
-
-  const handleFaceConfirmYes=async()=>{
-    if(classResult?.attribute_status==="unsupported"){
-      startFaceRec();
-      return;
-    }
-    const variants=(classResult?.variants?.length>0)
-      ? classResult.variants
-      : [
-        "轻度修复面部细节，保留人物自然神韵，整体风格不变",
-        "明显提升面部清晰度和亮度，让人物面貌更鲜明",
-        "温和修复面部，保留老照片的年代质感和整体氛围",
-      ];
-    setSelectedOpt(null);
-    setAiText("三种修复效果同步生成中……大约需要15-40秒，请稍等。");
-    setScreen(S.FACE_GENERATING);
-
-    // CSS filter 降级方案（图像API不可用时使用）
-    const FALLBACK_FILTERS=[
-      "sepia(0.08) contrast(1.06) brightness(1.12) saturate(1.15)",
-      "sepia(0) contrast(1.22) brightness(1.28) saturate(1.2)",
-      "sepia(0.42) contrast(1.02) brightness(0.96) saturate(0.9)",
-    ];
-
-    try{
-      // 并行提交三个任务——总耗时=最慢那张，而非三张叠加
-      const responses=await Promise.all(
-        variants.map(ins=>apiEdit(img.currentBase64,img.originMime,ins))
-      );
-      const results=responses.map((r,i)=>
-        r?.ok&&r.imageBase64
-          ?{type:"base64",data:r.imageBase64}
-          :{type:"filter",data:FALLBACK_FILTERS[i]}
-      );
-      const usedFallback=results.some(r=>r.type==="filter");
-      setImg(s=>({...s,candidates:results}));
-      setAiText(usedFallback
-        ?"好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？"
-        :"好了，这是三种不同的修复方向，您看哪个最接近您心里想的？"
-      );
-      setScreen(S.FACE_OPTIONS);
-    }catch(e){
-      const fallbacks=FALLBACK_FILTERS.map(f=>({type:"filter",data:f}));
-      setImg(s=>({...s,candidates:fallbacks}));
-      setAiText("好了，这是三种修复方向的预览效果，您看哪个最接近您心里想的？");
-      setScreen(S.FACE_OPTIONS);
-    }
-  };
-
-  const handleFaceConfirmNo=()=>{
-    setClassResult(null);
-    startFaceRec();
-  };
-
-  const handleSelectOpt=i=>setSelectedOpt(i);
-
-  const handleBackToOptions=()=>{
-    setSelectedOpt(null);
-    setAiText("好了，三种修复效果，您再选一个看看？");
-    setScreen(S.FACE_OPTIONS);
-  };
-
-  const handleGoCompare=()=>{
-    setImg(s=>({...s,prevBase64:s.currentBase64}));
-    setScreen(S.FACE_COMPARE);
-  };
-
-  const handleSliderConfirm=()=>{
-    const chosen=img.candidates[selectedOpt];
-    // base64: 更新 currentBase64；filter: 只更新 currentFilter 记录
-    const newBase64=chosen?.type==="base64"?chosen.data:img.currentBase64;
-    setImg(s=>({...s,currentBase64:newBase64,candidates:[null,null,null]}));
-    setSelectedOpt(null);
-    setClassResult(null);
-    moveCam(AREA_CAM[img.analysis?.face?.area]||DEFAULT_FACE_CAM);
-    setAiText("这个效果保存好了。面部还有什么想继续调整的吗？");
-    setScreen(S.FACE_NEXT_ASK);
-  };
-
-  const handleFaceMoreYes=()=>startFaceRec();
-
-  const handleFaceDone=()=>{
-    moveCam(WIDE_CAM);
-    setAiText("面部修复完成了。接下来，您想不想改改照片的色调和颜色？");
-    setScreen(S.COLOR_TEASER);
-  };
-
-  // ── Story ──────────────────────────────────────────────────────────────────
-  const handleStoryYes=()=>{
-    // 和"直接跳过"一样，先把照片加载为底图
-    const f=handleFile._file;
-    if(f){
-      const mime=f.type||"image/jpeg";
-      fileToBase64(f).then(b64=>{
-        setImg(s=>({...s,originBase64:b64,originMime:mime,currentBase64:b64,prevBase64:b64}));
-      });
-    }
-    setTranscript("");
-    setAiText("好的，您慢慢说，讲讲这张照片的故事……");
-    setScreen(S.STORY_REC);
-    startRec(t=>setTranscript(t));
-  };
-
-  const handleStoryStop=()=>{
-    stopRec();
-    setImg(s=>({...s,storyContext:transcript}));
-    handleFile._fromStory=true;
-    // Already have file — just proceed to analyze
-    setAiText("谢谢您分享这段回忆。让我来分析一下照片……");
-    setScreen(S.ANALYZING);
-    apiAnalyze(img.originBase64,img.originMime).then(res=>{
-      const analysis=res?.result||null;
-      setImg(s=>({...s,analysis}));
-      if(analysis?.damage?.detected){
-        const desc=analysis.damage.description||"一些损伤";
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
-        setAiText(`我看到照片上有${desc}，您想先修复这些吗？`);
-        setScreen(S.DAMAGE_CONFIRM);
-      }else{
-        goToFaceIntro(analysis);
-      }
-    }).catch(()=>goToFaceIntro(null));
-  };
-
-  const handleStorySkip=()=>{
-    setImg(s=>({...s,storyContext:""}));
-    setAiText("好的，我们开始分析照片……");
-    setScreen(S.ANALYZING);
-    apiAnalyze(img.originBase64,img.originMime).then(res=>{
-      const analysis=res?.result||null;
-      setImg(s=>({...s,analysis}));
-      if(analysis?.damage?.detected){
-        moveCam(AREA_CAM[analysis.damage.area]||DEFAULT_DMG_CAM);
-        setAiText("检测到照片有些损伤，您想先修复吗？");
-        setScreen(S.DAMAGE_CONFIRM);
-      }else goToFaceIntro(analysis);
-    }).catch(()=>goToFaceIntro(null));
-  };
-
-  // ── Computed ────────────────────────────────────────────────────────────────
-  const showPhoto=![S.HOME].includes(screen);
-  const preUpload=[S.PHOTO_INTRO,S.UPLOAD_CHOICE,S.UPLOAD_METHOD].includes(screen);
-  const photoSrc=img.currentBase64?imgSrc(img.currentBase64,img.originMime):null;
-  const originSrc=img.originBase64?imgSrc(img.originBase64,img.originMime):null;
-  const drawerH=DH[screen]||0;
-
-  if(screen===S.HOME)return <HomePage onEnter={()=>{setAiText("欢迎使用AI引导转译助手，您有想要修复的老照片吗？");setScreen(S.PHOTO_INTRO);}}/>;
-
-  return(
-    <div style={{width:"min(390px,100vw)",height:"100dvh",position:"relative",overflow:"hidden",background:P.bg,margin:"0 auto"}}>
-
-      {/* ── HIDDEN FILE INPUTS ── */}
-      <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}}
-        onChange={e=>{const f=e.target.files[0];if(f){setScreen(S.STORY_ASK);setAiText("照片收到了！\n您想不想先讲一讲这张照片背后的故事？这会帮助我更好地理解您的想法。");handleFile._file=f;}}}/>
-      <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}}
-        onChange={e=>{const f=e.target.files[0];if(f){setScreen(S.STORY_ASK);setAiText("照片收到了！\n您想不想先讲一讲这张照片背后的故事？这会帮助我更好地理解您的想法。");handleFile._file=f;}}}/>
-
-      {/* ── LAYER 1: PHOTO CANVAS ── */}
-      {showPhoto&&(
-        preUpload?(
-          <PreUploadBg/>
-        ):(
-          <div style={{position:"absolute",inset:0,overflow:"hidden"}}>
-            <div style={{
-              position:"absolute",inset:0,
-              transition:"transform .72s cubic-bezier(.4,0,.2,1)",
-              transform:`scale(${cam.scale})`,
-              transformOrigin:`${cam.ox}% ${cam.oy}%`,
-            }}>
-              {photoSrc&&(
-                <img src={photoSrc} alt="照片" style={{
-                  width:"100%",height:"100%",objectFit:"cover"}}/>
-              )}
-              {/* Vignette */}
-              <div style={{position:"absolute",inset:0,
-                background:"radial-gradient(ellipse at center,transparent 38%,rgba(15,8,3,.5) 100%)",
-                pointerEvents:"none"}}/>
-            </div>
-            {/* Scanning animation during analysis */}
-            {screen===S.ANALYZING&&(
-              <div style={{position:"absolute",left:0,right:0,height:2,
-                background:`linear-gradient(to right,transparent,${P.sageLt},transparent)`,
-                animation:"scanln 2.2s ease-in-out infinite"}}/>
-            )}
-            {/* 破损修复对比滑杆 */}
-            {screen===S.DAMAGE_COMPARE&&img.prevBase64&&(
-              <ComparisonSlider
-                oldSrc={imgSrc(img.prevBase64,img.originMime)}
-                newSrc={img.damageCandidateBase64==="__filter__"
-                  ? imgSrc(img.originBase64,img.originMime)
-                  : imgSrc(img.damageCandidateBase64,img.originMime)}
-                newFilter={img.damageCandidateBase64==="__filter__"
-                  ? "contrast(1.08) brightness(1.06) saturate(1.05)"
-                  : undefined}
-                onConfirm={handleDamageCompareConfirm}
-                onBack={handleDamageCompareSkip}
-                backLabel="跳过修补"
-                confirmLabel="修复效果好，继续"
-                hasNext={true}
-              />
-            )}
-
-            {/* 面部修复对比滑杆 */}
-            {screen===S.FACE_COMPARE&&img.prevBase64&&img.candidates[selectedOpt]&&(()=>{
-              const c=img.candidates[selectedOpt];
-              const newSrc=c?.type==="base64"
-                ? imgSrc(c.data,img.originMime)
-                : imgSrc(img.currentBase64,img.originMime);
-              const newFilter=c?.type==="filter"?c.data:undefined;
-              return(
-                <ComparisonSlider
-                  oldSrc={imgSrc(img.prevBase64,img.originMime)}
-                  newSrc={newSrc}
-                  newFilter={newFilter}
-                  onConfirm={handleSliderConfirm}
-                  onBack={handleBackToOptions}
-                  hasNext={false}
-                />
-              );
-            })()}
-            {/* Global compare */}
-            {globalCompare&&originSrc&&photoSrc&&(
-              <GlobalCompare originSrc={originSrc} currentSrc={photoSrc}
-                onClose={()=>setGlobalCompare(false)}/>
-            )}
-          </div>
-        )
-      )}
-
-      {/* ── LAYER 2: DRAWER ── */}
-      {screen!==S.FACE_COMPARE&&(
-        <Drawer height={drawerH}>
-
-          {/* PHOTO_INTRO */}
-          {screen===S.PHOTO_INTRO&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",flexDirection:"column",gap:10}}>
-                <Btn label="📷 修复新照片" onClick={()=>setScreen(S.UPLOAD_CHOICE)} primary full/>
-                <Btn label="📂 查看修复记录" disabled full/>
-              </div>
-            </>
-          )}
-
-          {/* UPLOAD_CHOICE */}
-          {screen===S.UPLOAD_CHOICE&&(
-            <>
-              <div style={{color:P.brown,fontSize:14,fontWeight:600,
-                marginBottom:14,fontFamily:F}}>选择待修复的照片</div>
-              <Btn label="📸 修复新照片" onClick={()=>setScreen(S.UPLOAD_METHOD)} primary full
-                style={{marginBottom:10,height:52}}/>
-              <Btn label="📂 查看修复记录" disabled full style={{height:52}}/>
-            </>
-          )}
-
-          {/* UPLOAD_METHOD */}
-          {screen===S.UPLOAD_METHOD&&(
-            <>
-              <div style={{color:P.brown,fontSize:14,fontWeight:600,
-                marginBottom:14,fontFamily:F}}>选择新照片</div>
-              <Btn label="🖼 从手机相册上传" onClick={()=>fileRef.current?.click()} primary full
-                style={{marginBottom:10,height:52}}/>
-              <Btn label="📷 打开相机拍摄" onClick={()=>camRef.current?.click()} full
-                style={{height:52}}/>
-            </>
-          )}
-
-          {/* STORY_ASK */}
-          {screen===S.STORY_ASK&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="我来讲一讲" onClick={handleStoryYes} primary/>
-                <Btn label="直接开始修图" onClick={()=>{
-                  const f=handleFile._file;
-                  if(f)handleFile(f);
-                  else handleStorySkip();
-                }}/>
-              </div>
-            </>
-          )}
-
-          {/* STORY_REC */}
-          {screen===S.STORY_REC&&(
-            <>
-              <div style={{color:P.dust,fontSize:14,textAlign:"center",
-                marginBottom:8,fontFamily:F,lineHeight:1.5}}>{aiText}</div>
-              <Waveform color={P.brown}/>
-              {transcript&&(
-                <div style={{margin:"8px 0",padding:"8px 12px",
-                  background:P.brownGhost,borderRadius:10,
-                  color:P.ink,fontSize:14,lineHeight:1.6,fontFamily:F,
-                  maxHeight:80,overflow:"hidden"}}>
-                  {transcript}
-                </div>
-              )}
-              <div style={{color:P.muted,fontSize:13,textAlign:"center",marginBottom:8,fontFamily:F,
-                fontVariantNumeric:"tabular-nums"}}>
-                {String(Math.floor(recSec/60)).padStart(2,"0")}:{String(recSec%60).padStart(2,"0")}
-              </div>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="说完了" onClick={handleStoryStop} primary/>
-                <Btn label="跳过故事" onClick={()=>{stopRec();handleStorySkip();}}/>
-              </div>
-            </>
-          )}
-
-          {/* ANALYZING */}
-          {screen===S.ANALYZING&&(
-            <>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-                <Spinner/>
-                <div style={{color:P.ink,fontSize:16,fontFamily:F,lineHeight:1.65}}>{aiText}</div>
-              </div>
-              <div style={{color:P.muted,fontSize:13,fontFamily:F,lineHeight:1.65}}>
-                原照片始终保留，每个版本都会自动存档。
-              </div>
-            </>
-          )}
-
-          {/* DAMAGE_CONFIRM */}
-          {screen===S.DAMAGE_CONFIRM&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="好的，先修损伤" onClick={handleDamageYes} primary/>
-                <Btn label="直接修人物" onClick={handleDamageNo}/>
-              </div>
-            </>
-          )}
-
-          {/* DAMAGE_PROCESSING */}
-          {screen===S.DAMAGE_PROCESSING&&(
-            <>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-                <Spinner/>
-                <div style={{color:P.ink,fontSize:15,fontFamily:F,lineHeight:1.65,flex:1}}>{aiText}</div>
-              </div>
-              <div style={{color:P.muted,fontSize:13,fontFamily:F,lineHeight:1.65,animation:"pulse 2s infinite"}}>
-                正在分析损伤区域并生成修复方案，请稍等……
-              </div>
-            </>
-          )}
-
-          {/* DAMAGE_PLACEHOLDER */}
-          {screen===S.DAMAGE_PLACEHOLDER&&(
-            <>
-              <div style={{display:"flex",gap:10,alignItems:"flex-start",
-                padding:"12px 14px",background:"rgba(122,86,64,.08)",
-                borderRadius:14,border:`1px solid ${P.brownBorder}`,marginBottom:14}}>
-                <div style={{fontSize:20,flexShrink:0}}>🔧</div>
-                <div>
-                  <div style={{color:P.brown,fontSize:14,fontWeight:700,
-                    fontFamily:F,marginBottom:4}}>破损修补功能开发中</div>
-                  <div style={{color:P.dust,fontSize:13,fontFamily:F,lineHeight:1.6}}>
-                    AI 已定位到照片上的破损区域。修补功能正在开发，我们先进入面部修复环节吧。
-                  </div>
-                </div>
-              </div>
-              <div style={{color:P.muted,fontSize:12,fontFamily:F,
-                lineHeight:1.65,marginBottom:"auto"}}>
-                📌 原始照片始终保留，修补完成后可随时补做这一步。
-              </div>
-              <Btn label="好的，先去修复面部" onClick={()=>goToFaceIntro(img.analysis)} primary full/>
-            </>
-          )}
-
-          {/* FACE_INTRO */}
-          {screen===S.FACE_INTRO&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="好的，开始吧" onClick={startFaceRec} primary/>
-                <Btn label="跳过这步" onClick={handleFaceDone}/>
-              </div>
-            </>
-          )}
-
-          {/* FACE_REC */}
-          {screen===S.FACE_REC&&(
-            <>
-              <div style={{color:P.dust,fontSize:14,textAlign:"center",
-                marginBottom:8,fontFamily:F,lineHeight:1.5}}>{aiText}</div>
-              <Waveform/>
-              {transcript&&(
-                <div style={{margin:"6px 0",padding:"8px 12px",
-                  background:P.brownGhost,borderRadius:10,
-                  color:P.ink,fontSize:14,lineHeight:1.6,fontFamily:F,
-                  maxHeight:72,overflow:"hidden"}}>
-                  {transcript}
-                </div>
-              )}
-              <div style={{color:P.muted,fontSize:13,textAlign:"center",
-                marginBottom:6,fontFamily:F,fontVariantNumeric:"tabular-nums",
-                display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                <span style={{color:P.rec,fontSize:11}}>● 正在录音</span>
-                {String(Math.floor(recSec/60)).padStart(2,"0")}:{String(recSec%60).padStart(2,"0")}
-              </div>
-              <div style={{marginTop:"auto"}}>
-                <Btn label="我说完了" onClick={stopFaceRec} danger full/>
-              </div>
-            </>
-          )}
-
-          {/* FACE_THINKING */}
-          {screen===S.FACE_THINKING&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:14}}><Dots/></div>
-            </>
-          )}
-
-          {/* FACE_CONFIRM */}
-          {screen===S.FACE_CONFIRM&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                {classResult?.attribute_status==="unsupported"?(
-                  <Btn label="好的，换个方向说" onClick={handleFaceConfirmYes} primary full/>
-                ):(
-                  <>
-                    <Btn label="重新说" onClick={handleFaceConfirmNo}/>
-                    <Btn label="对的，就是这个意思" onClick={handleFaceConfirmYes} primary style={{flex:2}}/>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* FACE_GENERATING */}
-          {screen===S.FACE_GENERATING&&(
-            <>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-                <Spinner/>
-                <div style={{color:P.ink,fontSize:15,fontFamily:F,lineHeight:1.65,flex:1}}>{aiText}</div>
-              </div>
-              <div style={{color:P.muted,fontSize:13,fontFamily:F,lineHeight:1.65,animation:"pulse 2s infinite"}}>
-                三种修复效果同步生成中，这需要一点时间……
-              </div>
-            </>
-          )}
-
-          {/* FACE_OPTIONS */}
-          {screen===S.FACE_OPTIONS&&(
-            <>
-              <AiBubble text={aiText} small/>
-              <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10,flex:1,overflow:"auto"}}>
-                {img.candidates.map((c,i)=>{
-                  const labels=classResult?.intents?.length>0
-                    ?["方案一","方案二","方案三"]
-                    :["自然修复","明亮清晰","保留年代感"];
-                  const isFilter=c?.type==="filter";
-                  const isBase64=c?.type==="base64";
-                  return(
-                    <div key={i} onClick={()=>handleSelectOpt(i)} style={{
-                      display:"flex",gap:12,alignItems:"center",
-                      background:selectedOpt===i?"rgba(113,137,104,.14)":P.brownGhost,
-                      border:`1.5px solid ${selectedOpt===i?P.sage:P.brownBorder}`,
-                      borderRadius:14,padding:"10px 12px",cursor:"pointer",
-                      transition:"all .18s",
-                    }}>
-                      <div style={{width:64,height:64,borderRadius:9,overflow:"hidden",flexShrink:0,
-                        background:"rgba(122,86,64,.1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {isBase64?(
-                          <img src={imgSrc(c.data,img.originMime)}
-                            style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                        ):isFilter&&img.currentBase64?(
-                          <img src={imgSrc(img.currentBase64,img.originMime)}
-                            style={{width:"100%",height:"100%",objectFit:"cover",filter:c.data}}/>
-                        ):(
-                          <Spinner size={22}/>
-                        )}
-                      </div>
-                      <div style={{flex:1}}>
-                        <div style={{color:P.ink,fontSize:16,fontWeight:700,fontFamily:F}}>{labels[i]}</div>
-                        <div style={{color:P.dust,fontSize:13,marginTop:2,fontFamily:F}}>
-                          {i===0?"轻度还原，保留神韵":i===1?"强化细节，整体明亮":"修复损伤，留年代感"}
-                        </div>
-                      </div>
-                      {selectedOpt===i&&<div style={{color:P.sage,fontSize:20}}>✓</div>}
-                    </div>
-                  );
-                })}
-              </div>
-              {selectedOpt!==null&&(
-                <div style={{marginTop:10}}>
-                  <Btn label="用这张对比一下" onClick={handleGoCompare} primary full/>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* FACE_NEXT_ASK */}
-          {screen===S.FACE_NEXT_ASK&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="还想改改" onClick={handleFaceMoreYes} primary/>
-                <Btn label="面部修完了" onClick={handleFaceDone}/>
-              </div>
-            </>
-          )}
-
-          {/* COLOR_TEASER */}
-          {screen===S.COLOR_TEASER&&(
-            <>
-              <AiBubble text={aiText}/>
-              <div style={{marginTop:10,padding:"10px 12px",
-                background:P.brownGhost,borderRadius:12,
-                color:P.muted,fontSize:13,fontFamily:F,lineHeight:1.6}}>
-                💡 色彩调整、背景修复等功能正在开发中，敬请期待。
-              </div>
-              <div style={{marginTop:"auto",display:"flex",gap:10}}>
-                <Btn label="保存当前成果" onClick={()=>{}} primary/>
-                <Btn label="返回首页" onClick={()=>{setScreen(S.HOME);setImg({originBase64:null,originMime:"image/jpeg",currentBase64:null,prevBase64:null,candidates:[null,null,null],storyContext:"",analysis:null});}}/>
-              </div>
-            </>
-          )}
-
-        </Drawer>
-      )}
-
-      {/* ── LAYER 3: BOTTOM BAR ── */}
-      <BottomBar
-        state={screen}
-        onGlobalCompare={()=>{if(photoSrc&&originSrc)setGlobalCompare(true);}}
-        onUndo={()=>{
-          const prev={
-            [S.STORY_REC]:S.STORY_ASK,[S.ANALYZING]:S.STORY_ASK,
-            [S.DAMAGE_CONFIRM]:S.STORY_ASK,[S.DAMAGE_PLACEHOLDER]:S.DAMAGE_CONFIRM,
-            [S.DAMAGE_PROCESSING]:S.DAMAGE_CONFIRM,[S.DAMAGE_COMPARE]:S.DAMAGE_CONFIRM,
-            [S.FACE_INTRO]:S.DAMAGE_CONFIRM,[S.FACE_REC]:S.FACE_INTRO,
-            [S.FACE_THINKING]:S.FACE_REC,[S.FACE_CONFIRM]:S.FACE_REC,
-            [S.FACE_GENERATING]:S.FACE_CONFIRM,[S.FACE_OPTIONS]:S.FACE_CONFIRM,
-            [S.FACE_COMPARE]:S.FACE_OPTIONS,[S.FACE_NEXT_ASK]:S.FACE_COMPARE,
-            [S.COLOR_TEASER]:S.FACE_NEXT_ASK,
-          };
-          if(prev[screen])setScreen(prev[screen]);
-        }}
-      />
-
-      {/* ── ERROR TOAST ── */}
-      {error&&(
-        <div style={{position:"absolute",top:52,left:16,right:16,
-          background:"rgba(194,65,40,.95)",color:"#fff",
-          borderRadius:12,padding:"12px 16px",
-          display:"flex",justifyContent:"space-between",alignItems:"center",
-          boxShadow:"0 4px 20px rgba(0,0,0,.3)",zIndex:200,fontFamily:F,fontSize:14}}>
-          <span>{error}</span>
-          <button onClick={()=>setError(null)} style={{
-            background:"none",border:"none",color:"#fff",fontSize:18,cursor:"pointer",
-            marginLeft:12,lineHeight:1}}>✕</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// ─────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────
+goTo('home');
 </script>
 </body>
 </html>
