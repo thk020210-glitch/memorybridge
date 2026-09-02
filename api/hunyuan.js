@@ -1,8 +1,9 @@
 // api/hunyuan.js
-// 意图分类模块 — 改用 Gemini 文字模型（gemini-3.1-flash-lite）
-// 原 Hunyuan 接口因 key 格式问题暂时替换，接口签名不变，前端无需修改
+// 意图分类：Qwen-Turbo via DashScope OpenAI-compatible endpoint
+// 前端接口不变（/api/hunyuan），内部从混元切换到 Qwen-Turbo
+// 指令改为中文生成，匹配 wan2.7-image-pro 对中文指令的优化
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
 function buildPrompt(transcript, storyContext) {
   const storySection = storyContext
@@ -37,63 +38,38 @@ ${storySection}【你的任务，分四步】
   b) 描述指向照片中多个人物里的某一个具体的人（比如"中间那个"
      "左边那个""戴眼镜那个"这类需要先定位是谁的描述），即使
      调整本身单独来看是合理的诉求，也判定为 unsupported
-  修复照片本身已经存在的损伤，以及调整整体或不需要区分人物的
-  诉求（不论是脸部、颜色、背景中的哪一类），不属于 unsupported，
-  不要混淆
 
 第三步：仅针对 intents 列表中的第一条诉求生成 variants，不论
 intents 列表里是否存在第二条，variants 都只能围绕第一条诉求
-展开，绝不能把第二条诉求的内容混入 variants 或者 confirmation_
-phrase 的主体部分（第二条诉求只能出现在 confirmation_phrase
-末尾"这个弄完了我们再说"那句话里，不能出现在其他任何地方）。
-如果第一条诉求的 attribute_status 是 specific，同时
-生成三条针对这个诉求的图像编辑指令文本。三条指令必须都是在满足
-用户这条诉求本身的前提下，彼此之间要有明显、可感知的区别，不能
-意思相近（可以是程度上的差异，比如轻微/适中/明显，也可以是风格
-上的差异，根据诉求本身的性质选择更合适的区分方式），但不能有
-任何一条偏离了诉求本身的核心意思（比如换新衣服这件事，三条都
-应该是真的换成新衣服，不能有一条变成"清洗原有的衣服"）。每条
-指令是一句可以直接用于图像编辑的具体描述。如果不是 specific，
-这一项留空数组。
+展开。如果第一条诉求的 attribute_status 是 specific，生成三条
+针对这个诉求的中文图像编辑指令。三条指令必须在满足用户诉求的
+前提下彼此有明显可感知的区别（程度差异或风格差异），不能意思
+相近，不能有任何一条偏离诉求核心。每条指令是可以直接用于图像
+编辑的简短中文句子，不超过30字。如果不是 specific，留空数组。
 
 第四步：生成一句确认话术，用大白话说出你理解到的意思，语气亲切
 自然，禁止使用"修复、增强、处理、优化"这类技术词汇，改用"弄
-清楚、调一调、改一改"这类日常口语。这里的"贴近用户原话"指的是
-保留用户话里的关键信息和整体语气基调，不是逐字复述用户说过的
-句子。
+清楚、调一调、改一改"这类日常口语。
+
 - 如果第一条诉求是 specific：正常转述确认这个具体诉求
 - 如果第一条诉求是 vague：转述为"我准备了几个方向给您看看，
-  您挑一个"这类意思，不要说成"交给系统全权处理"，因为接下来
-  用户依然会看到几个选项做选择
-- 如果第一条诉求是 unsupported：不要说"没听清楚"，坦诚说明这个
-  暂时处理不了，语气自然带过，不要显得沉重；如果是因为涉及
-  "指定照片中某个具体人物"，可以说明"目前还没法单独调整照片
-  里的某一个人，可以处理整张照片的调整"
-- 如果列表里有第二条诉求，在确认话术末尾自然地带一句，说明
-  "这个弄完了我们再说"
+  您挑一个"这类意思
+- 如果第一条诉求是 unsupported：坦诚说明暂时处理不了，语气自然
+- 如果列表里有第二条诉求，在末尾自然带一句"这个弄完了我们再说"
 
 【判断细则】
-- 核心原则：拿不准是 specific 还是 vague 时，一律判定为 vague，
-  不要勉强当作具体诉求处理
-- unsupported 的判定要谨慎，仅限于第二步里明确列出的两类情况，
-  不要因为诉求"可能不属于某个特定类别"或"效果可能做不好"就
-  归为不支持——只要是对这张照片本身某个方面的具体调整诉求，
-  不论属于面部、色彩、背景中的哪一类，都应正常处理
+- 拿不准 specific 还是 vague 时，一律判定为 vague
+- unsupported 仅限第二步明确列出的两类，不要因为可能做不好就归为不支持
 
 【输出格式】
-只输出纯 JSON 字符串，不能有任何其他文字、解释、markdown 代码块
-标记。四个字段必须完整：intents、attribute_status、variants、
-confirmation_phrase，缺一不可。variants 非 specific 时必须是
-空数组 []，specific 时固定为长度 3 的数组。
+只输出纯 JSON，不含任何其他文字或 markdown 标记：
+{"intents":["意图描述"],"attribute_status":"specific"或"vague"或"unsupported","variants":["中文编辑指令1","中文编辑指令2","中文编辑指令3"],"confirmation_phrase":"一句确认话术"}
 
-{"intents": ["第一条诉求"] 或 ["第一条诉求", "第二条诉求"],
- "attribute_status": "specific" 或 "vague" 或 "unsupported",
- "variants": ["变体1指令", "变体2指令", "变体3指令"],
- "confirmation_phrase": "一句确认话术"}
+variants 非 specific 时必须是空数组 []，specific 时固定长度为 3。
+附加约束：稳定输出，减少随机变化，禁止输出思考过程，只输出JSON。
 
 【用户刚才说的话】
-${transcript}
-附加约束：本次任务输出必须严谨、稳定，减少随机变化，每次相同输入返回一致的判断结果。禁止输出思考过程，禁止额外文字，只输出JSON。只做文本判断，不需要任何形式的图片生成`;
+${transcript}`;
 }
 
 module.exports = async function handler(req, res) {
@@ -103,41 +79,35 @@ module.exports = async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     return res.status(200).end();
   }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
-  }
+  const key = process.env.DASHSCOPE_API_KEY;
+  if (!key) return res.status(500).json({ error: "DASHSCOPE_API_KEY not configured" });
 
   const { transcript, storyContext } = req.body;
-
-  if (!transcript) {
-    return res.status(400).json({ error: "transcript is required" });
-  }
+  if (!transcript) return res.status(400).json({ error: "transcript is required" });
 
   const prompt = buildPrompt(transcript, storyContext);
-  const endpoint = `${GEMINI_BASE}/gemini-3.1-flash-lite:generateContent?key=${key}`;
 
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetch(QWEN_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 600 }
+        model: "qwen-turbo",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        max_tokens: 600
       })
     });
 
     const data = await resp.json();
-    if (!resp.ok) {
-      return res.status(resp.status).json({ ok: false, error: data });
-    }
+    if (!resp.ok) return res.status(resp.status).json({ ok: false, error: data });
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = data?.choices?.[0]?.message?.content || "";
     const cleaned = text.replace(/```json\n?|```\n?/g, "").trim();
 
     try {
@@ -148,7 +118,7 @@ module.exports = async function handler(req, res) {
     }
 
   } catch (err) {
-    console.error("Intent classification error:", err);
+    console.error("Qwen-Turbo error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
