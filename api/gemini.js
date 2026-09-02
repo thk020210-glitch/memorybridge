@@ -1,7 +1,6 @@
 // api/gemini.js
-// 分析：qwen-vl-plus（multimodal-generation 端点，同步，视觉理解）
-// 编辑：qwen-image-3.0-pro（image-generation 端点，异步，图像生成/编辑）
-// 两个端点完全不同，不能混用
+// 分析：qwen-vl-flash（multimodal-generation 同步，速度快）
+// 编辑：qwen-image-3.0-pro（multimodal-generation 异步，正确端点）
 
 const BASE = "https://dashscope.aliyuncs.com/api/v1";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -21,7 +20,9 @@ async function pollTask(taskId, key) {
     const { data } = await safeJson(r);
     const status = data?.output?.task_status;
     if (status === "SUCCEEDED") return data;
-    if (status === "FAILED") throw new Error(data?.message || "任务失败");
+    if (status === "FAILED") throw new Error(
+      data?.output?.message || data?.message || "任务失败"
+    );
   }
   throw new Error("任务超时（60s）");
 }
@@ -47,18 +48,18 @@ module.exports = async function handler(req, res) {
   const { action, imageBase64, mimeType, instruction } = req.body;
 
   try {
-    // ── 图像分析：qwen-vl-plus → multimodal-generation（同步）──────
+    // ── 分析：qwen-vl-flash（同步，速度快）──────────────────────────
     if (action === "analyze") {
       const prompt = `分析这张老照片，只返回JSON，不含任何其他文字：
 {"damage":{"detected":true或false,"confidence":"high"或"medium"或"low","area":"top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或null,"description":"15字以内中文或null"},"face":{"detected":true或false,"area":"top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或"full","personCount":数字}}
-规则：damage.detected=true仅当存在明显划痕撕裂折痕污渍或缺损。仅输出JSON。`;
+damage.detected=true仅当有明显划痕撕裂折痕污渍或缺损。只输出JSON。`;
 
       const { ok, status, data, raw } = await safeJson(
         await fetch(`${BASE}/services/aigc/multimodal-generation/generation`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
           body: JSON.stringify({
-            model: "qwen-vl-plus",
+            model: "qwen-vl-flash",
             input: { messages: [{ role: "user", content: [
               { image: `data:${mimeType||"image/jpeg"};base64,${imageBase64}` },
               { text: prompt }
@@ -78,11 +79,11 @@ module.exports = async function handler(req, res) {
       }
       return res.status(200).json({ ok: true, result: null, raw: text });
 
-    // ── 图像编辑：qwen-image-3.0-pro → image-generation（异步）────
+    // ── 编辑：qwen-image-3.0-pro 异步，multimodal-generation 端点 ──
     } else if (action === "edit") {
-      // 提交异步任务到 image-generation 端点（与分析不同）
+      // 提交异步任务（multimodal-generation + X-DashScope-Async: enable）
       const { ok, status, data: submitData, raw } = await safeJson(
-        await fetch(`${BASE}/services/aigc/image-generation/generation`, {
+        await fetch(`${BASE}/services/aigc/multimodal-generation/generation`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -91,17 +92,11 @@ module.exports = async function handler(req, res) {
           },
           body: JSON.stringify({
             model: "qwen-image-3.0-pro",
-            input: {
-              messages: [{ role: "user", content: [
-                { image: `data:${mimeType||"image/jpeg"};base64,${imageBase64}` },
-                { text: instruction }
-              ]}]
-            },
-            parameters: {
-              n: 1,
-              watermark: false,
-              prompt_extend: false
-            }
+            input: { messages: [{ role: "user", content: [
+              { image: `data:${mimeType||"image/jpeg"};base64,${imageBase64}` },
+              { text: instruction }
+            ]}] },
+            parameters: { prompt_extend: false }
           })
         })
       );
@@ -109,7 +104,7 @@ module.exports = async function handler(req, res) {
       if (!ok) {
         return res.status(status).json({
           ok: false,
-          error: submitData?.message || submitData?.code || raw || "提交任务失败"
+          error: submitData?.message || submitData?.code || raw || "提交失败"
         });
       }
 
@@ -125,9 +120,9 @@ module.exports = async function handler(req, res) {
       // 轮询结果
       const result = await pollTask(taskId, key);
 
-      // 提取图片 URL（qwen-image 结果格式）
+      // 提取图片 URL（qwen-image 通过 multimodal 返回的格式）
       const content = result?.output?.choices?.[0]?.message?.content || [];
-      let imageUrl = content.find(c => c.image)?.image
+      const imageUrl = content.find(c => c.image)?.image
         || result?.output?.results?.[0]?.url;
 
       if (!imageUrl) {
