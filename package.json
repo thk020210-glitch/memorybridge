@@ -2,5 +2,8 @@
   "name": "memorybridge",
   "version": "1.0.0",
   "description": "MemoryBridge · AI-guided photo restoration",
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
 }
