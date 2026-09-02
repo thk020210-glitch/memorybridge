@@ -1,6 +1,7 @@
 // api/gemini.js
 // 图像分析：Qwen-VL-Max（破损检测 + 人脸定位）
-// 图像编辑：wan2.7-image-pro（异步，原图+指令→修复后输出）
+// 图像编辑：qwen-image-3.0（平衡档，非 pro）——同一模型家族里生成更快、价格更低的一档，
+// 编辑能力不变，最大分辨率仍是 2048x2048，换成 -pro 只是要更强的复杂版式/小字渲染能力，本项目用不上
 // 前端接口不变，内部替换为 DashScope
 
 const sharp = require("sharp");
@@ -122,7 +123,7 @@ module.exports = async function handler(req, res) {
             "X-DashScope-Async": "enable"
           },
           body: JSON.stringify({
-            model: "qwen-image-3.0-pro",
+            model: "qwen-image-3.0",
             input: {
               messages: [{
                 role: "user",
