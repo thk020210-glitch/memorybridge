@@ -739,7 +739,8 @@ function App(){
       return;
     }
 
-    try{, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
+    try{
+      const instruction="Repair all visible scratches, tears, fold marks, stains, and physical damage in this photograph. Carefully reconstruct any missing or damaged areas to match the surrounding content. Preserve the original subjects, colors, composition, and photographic style exactly as they were.";
       const r=await apiEdit(img.originBase64,img.originMime,instruction);
       if(r?.ok&&r.imageBase64){
         setImg(s=>({...s,damageCandidateBase64:r.imageBase64,prevBase64:s.originBase64}));
