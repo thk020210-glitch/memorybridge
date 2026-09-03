@@ -62,20 +62,26 @@ module.exports = async function handler(req, res) {
   "damage": {
     "detected": true或false,
     "confidence": "high"或"medium"或"low",
-    "area": "top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或null,
+    "box": {"x":0.0到1.0, "y":0.0到1.0, "width":0.0到1.0, "height":0.0到1.0}或null,
     "description": "15字以内中文描述或null"
   },
   "face": {
     "detected": true或false,
-    "area": "top-left"或"top-center"或"top-right"或"center-left"或"center"或"center-right"或"bottom-left"或"bottom-center"或"bottom-right"或"full",
+    "box": {"x":0.0到1.0, "y":0.0到1.0, "width":0.0到1.0, "height":0.0到1.0}或null,
     "personCount": 数字
   }
 }
 
+box坐标说明：
+- x、y 是边界框左上角相对整张图片的比例坐标（左上角为原点 0,0，右下角为 1,1）
+- width、height 是边界框宽高相对整张图片宽高的比例
+- 若有多处破损，给出能包住全部破损区域的最小边界框；若有多张人脸，给出能包住全部人脸的最小边界框
+- box 需要贴合实际区域大小，不要为了保守而给出过大的框
+
 规则：
 - damage.detected=true仅当存在明显影响观看的划痕、撕裂、折痕、污渍或缺损区域
 - damage.confidence: high=非常明显，medium=可见但不严重，low=仅轻微老化
-- face.area指大多数人脸所在的九宫格区域
+- face.box 指大多数人脸所在的区域，face.detected=false 时 box 为 null
 - 仅输出JSON`;
 
       const resp = await fetch(
