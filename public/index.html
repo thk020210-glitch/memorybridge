@@ -106,7 +106,9 @@ img{display:block}
   background:rgba(122,86,64,.1);border-radius:12px;
   padding:10px 13px;font-size:15px;color:#2C1A0E;
   line-height:1.65;font-style:italic;margin:6px 0;
-  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;
+  /* 硬上限 + 内部滚动，取代不可靠的 -webkit-line-clamp：
+     说得越多，框内可以上下滑动查看，但永远不会撑开挤压下方按钮 */
+  max-height:100px;overflow-y:auto;-webkit-overflow-scrolling:touch;
   flex-shrink:0;
 }
 .transcript-box[data-live="0"]{color:#A08468}
@@ -1007,7 +1009,7 @@ const screens = {
       <button class="btn-p" style="margin-top:auto" onclick="finishStoryRec()">说完了，开始修图</button>`);
     startRec(text => {
       const el = document.getElementById('story-transcript');
-      if (el) { el.dataset.live = '1'; el.textContent = text; }
+      if (el) { el.dataset.live = '1'; el.textContent = text; el.scrollTop = el.scrollHeight; }
     });
   },
 
@@ -1091,7 +1093,7 @@ const screens = {
       <button class="btn-p" style="margin-top:auto" onclick="finishFaceRec()">我说完了</button>`);
     startRec(text => {
       const el = document.getElementById('face-transcript');
-      if (el) { el.dataset.live = '1'; el.textContent = text; }
+      if (el) { el.dataset.live = '1'; el.textContent = text; el.scrollTop = el.scrollHeight; }
     });
   },
 
