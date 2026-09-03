@@ -467,17 +467,36 @@ img{display:block}
 
 <script>
 // ─────────────────────────────────────────────────────────────────
-// CAMERA — nine-grid area → transform-origin percentage
+// CAMERA — 边界框 → 连续的 transform-origin 焦点 + 反比缩放
 // ─────────────────────────────────────────────────────────────────
-const NINE_GRID = {
-  'top-left':{ox:30,oy:24},'top-center':{ox:50,oy:20},'top-right':{ox:70,oy:24},
-  'center-left':{ox:28,oy:48},'center':{ox:50,oy:46},'center-right':{ox:72,oy:48},
-  'bottom-left':{ox:30,oy:74},'bottom-center':{ox:50,oy:76},'bottom-right':{ox:70,oy:74},
-  'full':{ox:50,oy:50},
-};
-function camFromArea(area, scale) {
-  const g = NINE_GRID[area] || NINE_GRID.center;
-  return { ox:g.ox, oy:g.oy, sc:scale || 1.7, f:'' };
+// box: {x,y,width,height}，均为 0-1 的归一化比例（来自 qwen-vl-max 的真实检测框）。
+// 焦点取框的中心点（连续值，不再是九宫格的 9 个固定落点）；
+// 缩放倍数与框的大小成反比：区域越小推得越近，区域越大越保守——
+// 让检测框在放大后大致占视口宽高的 TARGET_FILL 比例，而不是固定倍数。
+const TARGET_FILL = 0.35;
+function camFromBox(box, opts) {
+  opts = opts || {};
+  const minScale = opts.minScale ?? 1.15;
+  const maxScale = opts.maxScale ?? 2.4;
+  if (!box) return { ox:50, oy:50, sc:(minScale+maxScale)/2 * 0.72, f:'' };
+  const cx = (box.x + box.width / 2) * 100;
+  const cy = (box.y + box.height / 2) * 100;
+  const size = Math.max(box.width, box.height, 0.05); // 极小框兜底，避免缩放失控
+  const sc = Math.max(minScale, Math.min(maxScale, TARGET_FILL / size));
+  return { ox: Math.max(8, Math.min(92, cx)), oy: Math.max(8, Math.min(92, cy)), sc, f:'' };
+}
+// 衣服检测未上线：从已检测到的人脸框向下几何推算一个大致的躯干区域，
+// 仅用于"功能暂未开放"占位演示的镜头指向，不代表真实检测能力。
+function clothesBoxFromFace(faceBox) {
+  if (!faceBox) return { x:0.28, y:0.5, width:0.44, height:0.42 }; // 无人脸信息时的通用兜底位置
+  const cx = faceBox.x + faceBox.width / 2;
+  // 宽高按人脸比例放大，但设绝对上限：人脸本身很大（近景半身照）时，
+  // 不按比例继续放大，否则推算框会膨胀到接近全图，跟"颜色"选项的全景view失去区分度
+  const w = Math.min(faceBox.width * 1.7, 0.55);
+  const h = Math.min(faceBox.height * 1.9, 0.5);
+  const y = Math.min(1 - h, faceBox.y + faceBox.height * 0.85);
+  const x = Math.max(0, Math.min(1 - w, cx - w / 2));
+  return { x, y, width:w, height:h };
 }
 // Nudge the focal point up so the drawer doesn't cover it
 function camAdjusted(cam, drawerH) {
@@ -514,7 +533,9 @@ const PH = {
   face_generating: 180,
   face_options:    494,
   face_next:       232,
-  next_teaser:     252,
+  next_choice:     220,
+  next_color:      220,
+  next_clothes:    220,
 };
 
 const STAGES = ['上传', '破损修复', '面部修复', '完成'];
@@ -532,6 +553,7 @@ let slDragging = false;
 let faceRound = 0;
 let classResult = null;
 let pendingTranscript = '';
+let preCompleteFrom = 'face_next'; // 记录进入 complete 前最后停留在哪个选择屏，供"撤回上步"使用
 
 // Photo / session state — everything the real pipeline needs to remember
 let PS = {
@@ -923,7 +945,7 @@ function goTo(state) {
 
   if (state === 'home') {
     hideCanvas();
-    faceRound = 0; selectedOpt = null; classResult = null; pendingTranscript = '';
+    faceRound = 0; selectedOpt = null; classResult = null; pendingTranscript = ''; preCompleteFrom = 'face_next';
     PS = { originBase64:null, originMime:'image/jpeg', currentBase64:null, prevBase64:null,
       damageCandidateBase64:null, damageIsFilter:false, candidates:[null,null,null],
       storyContext:'', analysis:null };
@@ -1027,7 +1049,7 @@ const screens = {
 
   damage_detect() {
     const dmg = PS.analysis?.damage;
-    setCamera(camAdjusted(camFromArea(dmg?.area, 1.8), PH.damage_detect));
+    setCamera(camAdjusted(camFromBox(dmg?.box), PH.damage_detect));
     setStage(1,'破损修复');
     const isLow = dmg?.confidence === 'low';
     const msg = isLow
@@ -1045,7 +1067,7 @@ const screens = {
   },
 
   damage_proc() {
-    setCamera(camAdjusted(camFromArea(PS.analysis?.damage?.area, 1.8), PH.damage_proc));
+    setCamera(camAdjusted(camFromBox(PS.analysis?.damage?.box), PH.damage_proc));
     setStage(1,'修复损伤中');
     showPanel(PH.damage_proc, `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -1060,7 +1082,7 @@ const screens = {
 
   face_intro() {
     const face = PS.analysis?.face;
-    setCamera(camAdjusted(camFromArea(face?.area, 1.7), PH.face_intro));
+    setCamera(camAdjusted(camFromBox(face?.box), PH.face_intro));
     setStage(2,'面部修复');
     const count = face?.personCount || 1;
     const note = count >= 2 ? `照片里有${count}位人物，目前支持最多两人的修复。` : '';
@@ -1071,12 +1093,12 @@ const screens = {
       </div>
       <div class="btn-row" style="margin-top:auto">
         <button class="btn-p" onclick="goTo('face_rec')">好的，开始吧</button>
-        <button class="btn-s" style="margin:0" onclick="goTo('next_teaser')">跳过这步</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('next_choice')">跳过这步</button>
       </div>`);
   },
 
   face_rec() {
-    setCamera(camAdjusted(camFromArea(PS.analysis?.face?.area, 1.7), PH.face_rec));
+    setCamera(camAdjusted(camFromBox(PS.analysis?.face?.box), PH.face_rec));
     setStage(2,'面部修复');
     let sec = 0;
     recTid = setInterval(()=>{ sec++;
@@ -1172,7 +1194,7 @@ const screens = {
   },
 
   face_next() {
-    setCamera(camAdjusted(camFromArea(PS.analysis?.face?.area, 1.7), PH.face_next));
+    setCamera(camAdjusted(camFromBox(PS.analysis?.face?.box), PH.face_next));
     setStage(2,'面部修复');
     showPanel(PH.face_next, `
       <div class="ai-row">
@@ -1181,26 +1203,36 @@ const screens = {
       </div>
       <div class="btn-row" style="margin-top:auto">
         <button class="btn-w" onclick="goTo('face_rec')">还想改改</button>
-        <button class="btn-p" style="margin:0" onclick="goTo('next_teaser')">面部修完了</button>
+        <button class="btn-p" style="margin:0" onclick="goTo('next_choice')">面部修完了</button>
       </div>`);
   },
 
-  next_teaser() {
-    setCamera('done'); setStage(3,'下一步');
-    showPanel(PH.next_teaser, `
+  next_choice() {
+    setCamera('wide'); setStage(3,'选择下一步');
+    showPanel(PH.next_choice, `
       <div class="ai-row">
         <div class="ai-avatar brand-mark-brown"></div>
-        <div class="ai-text" data-msg="接下来，您想不想改改照片的色调和颜色？"></div>
-      </div>
-      <div style="padding:10px 12px;background:rgba(122,86,64,.08);border-radius:12px;
-        font-size:13px;color:#A08468;margin:10px 0;line-height:1.6;
-        display:flex;align-items:flex-start;gap:8px">
-        <svg class="ico" style="width:20px;height:20px;flex-shrink:0;margin-top:1px"><use href="#i-bulb"/></svg>
-        <span>色彩调整、背景修复功能即将开放，敬请期待</span>
+        <div class="ai-text" data-msg="这个效果保存好了。接下来，您想不想改改照片的颜色？或者改改人物的衣服？"></div>
       </div>
       <div class="btn-row" style="margin-top:auto">
-        <button class="btn-p" onclick="goTo('complete')">直接完成修复</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('next_color')">改改颜色</button>
+        <button class="btn-s" style="margin:0" onclick="goTo('next_clothes')">改改衣服</button>
       </div>`);
+  },
+
+  next_color() {
+    preCompleteFrom = 'next_color';
+    setStage(3,'调整颜色');
+    setCamera('wide'); // 选颜色 = 保持全景，不推近
+    revealNotAvailable('next_color', PH.next_color, '色彩调整功能还在开发中，敬请期待！');
+  },
+
+  next_clothes() {
+    preCompleteFrom = 'next_clothes';
+    setStage(3,'调整衣服');
+    // 衣服检测暂未上线：从已有的人脸框几何推算一个大致躯干区域，仅用于这次镜头指向的占位演示
+    setCamera(camAdjusted(camFromBox(clothesBoxFromFace(PS.analysis?.face?.box)), PH.next_clothes));
+    revealNotAvailable('next_clothes', PH.next_clothes, '服装调整功能还在开发中，敬请期待！');
   },
 
   face_compare() {
@@ -1225,7 +1257,7 @@ const screens = {
           PS.candidates = [null,null,null];
           selectedOpt = null;
           faceRound++;
-          goTo(faceRound < 2 ? 'face_next' : 'next_teaser');
+          goTo(faceRound < 2 ? 'face_next' : 'next_choice');
         }
       }
     );
@@ -1235,6 +1267,29 @@ const screens = {
 // ─────────────────────────────────────────────────────────────────
 // ASYNC PIPELINE — the actual real-API steps
 // ─────────────────────────────────────────────────────────────────
+// 选完"颜色"或"衣服"后，先让镜头动作跑完，再浮现"暂未开放"文案，
+// 而不是文案和镜头移动同时出现——呼应"系统给一个默认路径 + 一个平行选项，
+// 选完就直接推进"的设计：用户不用开口描述下一步想改哪，只需要在两个选项里点一下。
+function revealNotAvailable(state, ph, msg) {
+  setTimeout(() => {
+    if (cur !== state) return; // 等待期间用户已经离开（撤回/退出），不再弹出
+    showPanel(ph, `
+      <div class="ai-row">
+        <div class="ai-avatar brand-mark-brown"></div>
+        <div class="ai-text" data-msg="${msg}"></div>
+      </div>
+      <div style="padding:10px 12px;background:rgba(122,86,64,.08);border-radius:12px;
+        font-size:13px;color:#A08468;margin:10px 0;line-height:1.6;
+        display:flex;align-items:flex-start;gap:8px">
+        <svg class="ico" style="width:20px;height:20px;flex-shrink:0;margin-top:1px"><use href="#i-bulb"/></svg>
+        <span>这条路径已经记录下来，后续版本会补上</span>
+      </div>
+      <div class="btn-row" style="margin-top:auto">
+        <button class="btn-p" onclick="goTo('complete')">完成修复</button>
+      </div>`);
+  }, 800);
+}
+
 async function runAnalysis() {
   try {
     const res = await apiAnalyze(PS.originBase64, PS.originMime);
@@ -1382,7 +1437,8 @@ function barAction(action) {
       face_thinking:'face_rec', face_confirm:'face_thinking',
       face_generating:'face_confirm', face_options:'face_confirm',
       face_compare:'face_options', face_next:'face_compare',
-      next_teaser:'face_next', complete:'next_teaser',
+      next_choice:'face_next', next_color:'next_choice', next_clothes:'next_choice',
+      complete: preCompleteFrom,
     };
     if (prev[cur]) goTo(prev[cur]);
   } else if (action === 'compare') {
