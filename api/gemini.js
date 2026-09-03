@@ -56,32 +56,41 @@ module.exports = async function handler(req, res) {
   try {
     // ── 图像分析：Qwen-VL-Max ───────────────────────────────────────────
     if (action === "analyze") {
+      // 用 5x5 网格分类 + 粗粒度大小分档，取代此前的自由坐标边界框。
+      // 原因：VLM 在"选一个格子"这类分类任务上普遍可靠，在"吐出精确浮点坐标"
+      // 这类数值回归任务上普遍不可靠——实测边界框版本的聚焦准确度反而不如
+      // 最早的九宫格版本。这里保留分类任务的可靠性，同时把格子从 3x3 加密到
+      // 5x5，位置精度还是比原来的九宫格更细。
       const prompt = `分析这张老照片，只返回以下格式的JSON，不含任何其他文字或解释：
 
 {
   "damage": {
     "detected": true或false,
     "confidence": "high"或"medium"或"low",
-    "box": {"x":0.0到1.0, "y":0.0到1.0, "width":0.0到1.0, "height":0.0到1.0}或null,
+    "gridCol": 1到5的整数或null,
+    "gridRow": 1到5的整数或null,
+    "size": "small"或"medium"或"large"或null,
     "description": "15字以内中文描述或null"
   },
   "face": {
     "detected": true或false,
-    "box": {"x":0.0到1.0, "y":0.0到1.0, "width":0.0到1.0, "height":0.0到1.0}或null,
+    "gridCol": 1到5的整数或null,
+    "gridRow": 1到5的整数或null,
+    "size": "small"或"medium"或"large"或null,
     "personCount": 数字
   }
 }
 
-box坐标说明：
-- x、y 是边界框左上角相对整张图片的比例坐标（左上角为原点 0,0，右下角为 1,1）
-- width、height 是边界框宽高相对整张图片宽高的比例
-- 若有多处破损，给出能包住全部破损区域的最小边界框；若有多张人脸，给出能包住全部人脸的最小边界框
-- box 需要贴合实际区域大小，不要为了保守而给出过大的框
+网格与大小说明：
+- 把整张图片划分成 5列×5行共25个格子，gridCol 是列号（1=最左，5=最右），gridRow 是行号（1=最上，5=最下）
+- gridCol、gridRow 指目标区域中心点所在的格子
+- size 指目标区域占整张图片面积的大致比例：small=不到图片的1/6，medium=1/6到1/3之间，large=超过1/3
+- face 的网格与大小指所有人脸所在的整体范围（如有多张人脸，取能覆盖全部人脸的中心位置与大小）
 
 规则：
 - damage.detected=true仅当存在明显影响观看的划痕、撕裂、折痕、污渍或缺损区域
 - damage.confidence: high=非常明显，medium=可见但不严重，low=仅轻微老化
-- face.box 指大多数人脸所在的区域，face.detected=false 时 box 为 null
+- face.gridCol、face.gridRow、face.size 在 face.detected=false 时均为 null
 - 仅输出JSON`;
 
       const resp = await fetch(
@@ -100,7 +109,12 @@ box坐标说明：
                 ]
               }]
             },
-            parameters: { result_format: "message" }
+            // qwen-vl-max 默认把输入图压到约131万像素再做检测，我们准备的照片
+            // 长边1600px（方图约256万像素）已经超过这个默认上限，会被二次压缩，
+            // 官方文档也提到超出鲁棒分辨率范围时"偶发检测框漂移"。开启
+            // vl_high_resolution_images 让模型按图片实际分辨率处理（上限约1677万
+            // 像素，我们的图远低于此），避免这层不必要的画质损失。
+            parameters: { result_format: "message", vl_high_resolution_images: true }
           })
         }
       );
