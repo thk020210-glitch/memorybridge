@@ -467,36 +467,36 @@ img{display:block}
 
 <script>
 // ─────────────────────────────────────────────────────────────────
-// CAMERA — 边界框 → 连续的 transform-origin 焦点 + 反比缩放
+// CAMERA — 5×5 网格分类 + 粗粒度大小 → transform-origin 焦点与缩放
 // ─────────────────────────────────────────────────────────────────
-// box: {x,y,width,height}，均为 0-1 的归一化比例（来自 qwen-vl-max 的真实检测框）。
-// 焦点取框的中心点（连续值，不再是九宫格的 9 个固定落点）；
-// 缩放倍数与框的大小成反比：区域越小推得越近，区域越大越保守——
-// 让检测框在放大后大致占视口宽高的 TARGET_FILL 比例，而不是固定倍数。
-const TARGET_FILL = 0.35;
-function camFromBox(box, opts) {
+// 这里从"自由坐标边界框"退回到"选格子"，是吃了一次实测教训后改的：
+// 边界框版本要求模型吐出精确浮点坐标，属于数值回归，实测聚焦准确度反而不如
+// 更早期、更粗糙的九宫格分类版本。分类任务（选一个格子/选一档大小）对这类
+// 模型明显更可靠，所以把格子从 3×3 加密到 5×5 保留精度提升，但仍然是分类。
+const GRID_N = 5;
+const SIZE_SCALE = { small: 2.4, medium: 1.8, large: 1.3 };
+function camFromGrid(cell, opts) {
   opts = opts || {};
-  const minScale = opts.minScale ?? 1.15;
-  const maxScale = opts.maxScale ?? 2.4;
-  if (!box) return { ox:50, oy:50, sc:(minScale+maxScale)/2 * 0.72, f:'' };
-  const cx = (box.x + box.width / 2) * 100;
-  const cy = (box.y + box.height / 2) * 100;
-  const size = Math.max(box.width, box.height, 0.05); // 极小框兜底，避免缩放失控
-  const sc = Math.max(minScale, Math.min(maxScale, TARGET_FILL / size));
-  return { ox: Math.max(8, Math.min(92, cx)), oy: Math.max(8, Math.min(92, cy)), sc, f:'' };
+  const fallbackScale = opts.fallbackScale ?? 1.5;
+  if (!cell || !cell.gridCol || !cell.gridRow) return { ox:50, oy:50, sc:fallbackScale, f:'' };
+  const col = Math.max(1, Math.min(GRID_N, cell.gridCol));
+  const row = Math.max(1, Math.min(GRID_N, cell.gridRow));
+  const ox = (col - 0.5) / GRID_N * 100;
+  const oy = (row - 0.5) / GRID_N * 100;
+  const sc = SIZE_SCALE[cell.size] || fallbackScale;
+  return { ox: Math.max(8, Math.min(92, ox)), oy: Math.max(8, Math.min(92, oy)), sc, f:'' };
 }
-// 衣服检测未上线：从已检测到的人脸框向下几何推算一个大致的躯干区域，
+// 衣服检测未上线：从已检测到的人脸格子向下移一整格，作为大致的躯干位置，
 // 仅用于"功能暂未开放"占位演示的镜头指向，不代表真实检测能力。
-function clothesBoxFromFace(faceBox) {
-  if (!faceBox) return { x:0.28, y:0.5, width:0.44, height:0.42 }; // 无人脸信息时的通用兜底位置
-  const cx = faceBox.x + faceBox.width / 2;
-  // 宽高按人脸比例放大，但设绝对上限：人脸本身很大（近景半身照）时，
-  // 不按比例继续放大，否则推算框会膨胀到接近全图，跟"颜色"选项的全景view失去区分度
-  const w = Math.min(faceBox.width * 1.7, 0.55);
-  const h = Math.min(faceBox.height * 1.9, 0.5);
-  const y = Math.min(1 - h, faceBox.y + faceBox.height * 0.85);
-  const x = Math.max(0, Math.min(1 - w, cx - w / 2));
-  return { x, y, width:w, height:h };
+function clothesCellFromFace(faceCell) {
+  if (!faceCell || !faceCell.gridCol || !faceCell.gridRow) {
+    return { gridCol:3, gridRow:4, size:'medium' }; // 无人脸信息时的通用兜底位置：偏下居中
+  }
+  return {
+    gridCol: faceCell.gridCol,
+    gridRow: Math.min(GRID_N, faceCell.gridRow + 1),
+    size: faceCell.size === 'small' ? 'medium' : 'large', // 躯干通常比脸部区域更大
+  };
 }
 // Nudge the focal point up so the drawer doesn't cover it
 function camAdjusted(cam, drawerH) {
@@ -1024,7 +1024,7 @@ const screens = {
     showPanel(PH.story_rec, `
       <div class="ai-row">
         <div class="ai-avatar brand-mark-brown"></div>
-        <div class="ai-text" data-msg="好的，您慢慢说，讲讲这张照片背后的故事……"></div>
+        <div class="ai-text" data-msg="您慢慢说，讲讲这张照片背后的故事……"></div>
       </div>
       ${recIndicatorHtml('rec-timer','#7A5040')}
       <div class="transcript-box" id="story-transcript" data-live="0">请对着手机讲述这张照片的故事……</div>
@@ -1049,7 +1049,7 @@ const screens = {
 
   damage_detect() {
     const dmg = PS.analysis?.damage;
-    setCamera(camAdjusted(camFromBox(dmg?.box), PH.damage_detect));
+    setCamera(camAdjusted(camFromGrid(dmg), PH.damage_detect));
     setStage(1,'破损修复');
     const isLow = dmg?.confidence === 'low';
     const msg = isLow
@@ -1067,7 +1067,7 @@ const screens = {
   },
 
   damage_proc() {
-    setCamera(camAdjusted(camFromBox(PS.analysis?.damage?.box), PH.damage_proc));
+    setCamera(camAdjusted(camFromGrid(PS.analysis?.damage), PH.damage_proc));
     setStage(1,'修复损伤中');
     showPanel(PH.damage_proc, `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -1082,7 +1082,7 @@ const screens = {
 
   face_intro() {
     const face = PS.analysis?.face;
-    setCamera(camAdjusted(camFromBox(face?.box), PH.face_intro));
+    setCamera(camAdjusted(camFromGrid(face), PH.face_intro));
     setStage(2,'面部修复');
     const count = face?.personCount || 1;
     const note = count >= 2 ? `照片里有${count}位人物，目前支持最多两人的修复。` : '';
@@ -1098,7 +1098,7 @@ const screens = {
   },
 
   face_rec() {
-    setCamera(camAdjusted(camFromBox(PS.analysis?.face?.box), PH.face_rec));
+    setCamera(camAdjusted(camFromGrid(PS.analysis?.face), PH.face_rec));
     setStage(2,'面部修复');
     let sec = 0;
     recTid = setInterval(()=>{ sec++;
@@ -1194,7 +1194,7 @@ const screens = {
   },
 
   face_next() {
-    setCamera(camAdjusted(camFromBox(PS.analysis?.face?.box), PH.face_next));
+    setCamera(camAdjusted(camFromGrid(PS.analysis?.face), PH.face_next));
     setStage(2,'面部修复');
     showPanel(PH.face_next, `
       <div class="ai-row">
@@ -1231,7 +1231,7 @@ const screens = {
     preCompleteFrom = 'next_clothes';
     setStage(3,'调整衣服');
     // 衣服检测暂未上线：从已有的人脸框几何推算一个大致躯干区域，仅用于这次镜头指向的占位演示
-    setCamera(camAdjusted(camFromBox(clothesBoxFromFace(PS.analysis?.face?.box)), PH.next_clothes));
+    setCamera(camAdjusted(camFromGrid(clothesCellFromFace(PS.analysis?.face)), PH.next_clothes));
     revealNotAvailable('next_clothes', PH.next_clothes, '服装调整功能还在开发中，敬请期待！');
   },
 
